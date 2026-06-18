@@ -10,28 +10,26 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s — %(message)s")
 OUTPUT_DIR = r"C:\TFM\V3\output\mfe_1997_2001"
 
 # =============================================================================
-# PASO 1: Cargar y recortar datos
+# PASO 1: Cargar y recortar datos al área de estudio
 # =============================================================================
 print("\n--- PASO 1: Carga de datos ---")
-ds = drought_impact.load_and_merge_datasets(
+ds_clip = drought_impact.load_and_merge_datasets(
     drought_path    = r"C:\TFM\V3\datos\scpdsi.nc",
     vegetation_path = r"C:\TFM\V3\datos\SNDVI.nc",
     drought_var     = "value",
     vegetation_var  = "SNDVI",
+    shapefile_path  = r"C:\TFM\mfe_illesbalears\MFE_53.shp",
     crs             = "EPSG:23030"
-)
-ds_clip = drought_impact.clip_dataset_to_polygon(
-    ds, r"C:\TFM\mfe_illesbalears\MFE_53.shp"
 )
 print(f"Dataset recortado: {dict(ds_clip.sizes)}")
 
 # =============================================================================
-# PASO 2: Funciones de apoyo
+# PASO 2: Funciones de apoyo a la decisión
 # =============================================================================
 print("\n--- PASO 2a: Detección de eventos ---")
 events = drought_impact.detect_drought_events(
     ds_clip,
-    severity_threshold = -1.5,
+    severity_threshold = -2.74,
     min_duration       = 6,
     pooling_periods    = 4,
     plot               = True,
@@ -39,7 +37,6 @@ events = drought_impact.detect_drought_events(
 )
 print(events)
 
-# Exportar tabla de eventos a CSV
 csv_events = drought_impact.export_events_to_csv(
     events,
     output_dir = OUTPUT_DIR,
@@ -77,33 +74,9 @@ results = drought_impact.run_drought_impact_pipeline(
 )
 
 # =============================================================================
-# PASO 4: Exportar métricas individuales del panel
+# PASO 4: Diagnóstico ventanas SNDVI
 # =============================================================================
-print("\n--- PASO 4: Exportar métricas individuales ---")
-import xarray as xr
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import numpy as np
-
-metrics_ds = drought_impact.vegetation_impact_metrics(
-    dataset              = ds_clip,
-    veg_var              = "ndvi",
-    index_var            = "drought_index",
-    windows              = results["windows"],
-    exposure_threshold   = 0.0,
-    agg_method           = "median",
-    min_recovery_periods = 4
-)
-
-print("\n--- Exportando métricas individuales ---")
-individual_paths = drought_impact.plot_metrics_individual(metrics_ds, OUTPUT_DIR)
-for p in individual_paths:
-    print(f"  Exportada: {p}")
-
-# =============================================================================
-# PASO 5: Diagnóstico ventanas SNDVI
-# =============================================================================
-print("\n--- PASO 5: Diagnóstico ventanas SNDVI ---")
+print("\n--- PASO 4: Diagnóstico ventanas SNDVI ---")
 windows = results["windows"]
 pre_med  = ds_clip["ndvi"].sel(time=windows["vegetation"]["pre_drought"]).median(dim=["x","y"]).mean().item()
 dur_med  = ds_clip["ndvi"].sel(time=windows["vegetation"]["during_drought"]).median(dim=["x","y"]).mean().item()
