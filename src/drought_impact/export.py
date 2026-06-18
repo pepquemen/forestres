@@ -16,15 +16,14 @@ from shapely.geometry import Point
 # =============================================================================
 
 _METRIC_STYLES = {
-    "resistance":          {"cmap": "RdYlGn",   "label": "Resistencia (ΔSNDVI)",           "diverging": True},
-    "recovery":            {"cmap": "RdYlGn",   "label": "Recuperación (ΔSNDVI)",          "diverging": True},
-    "resilience":          {"cmap": "RdYlGn",   "label": "Resiliencia Neta (ΔSNDVI)",      "diverging": True},
-
-    "accumulated_deficit": {"cmap": "YlOrRd_r", "label": "Déficit Acumulado (ΔSNDVI·q)",   "diverging": False},
+    "resistance":          {"cmap": "RdYlGn",   "label": "Resistencia (ΔSNDVI)",               "diverging": True},
+    "recovery":            {"cmap": "RdYlGn",   "label": "Recuperación (ΔSNDVI)",              "diverging": True},
+    "resilience":          {"cmap": "RdYlGn",   "label": "Resiliencia Neta (ΔSNDVI)",          "diverging": True},
+    "accumulated_deficit": {"cmap": "YlOrRd_r", "label": "Déficit Acumulado (ΔSNDVI·q)",       "diverging": False},
     "recovery_time":       {"cmap": "YlOrRd",   "label": "Tiempo de Recuperación (quincenas)", "diverging": False},
-    "did_not_recover":     {"cmap": "Reds",      "label": "Estado Crónico No Recuperado",   "diverging": False},
-    "drought_min":    {"cmap": "RdBu", "label": "Intensidad Sequía (mínimo índice)",  "diverging": True},
-    "drought_median": {"cmap": "RdBu", "label": "Intensidad Sequía (mediana índice)", "diverging": True},
+    "did_not_recover":     {"cmap": "Reds",      "label": "Estado Crónico No Recuperado",       "diverging": False},
+    "drought_min":         {"cmap": "RdBu",      "label": "Intensidad Sequía (mínimo índice)",  "diverging": True},
+    "drought_median":      {"cmap": "RdBu",      "label": "Intensidad Sequía (mediana índice)", "diverging": True},
 }
 
 _GI_STAR_STYLES = {
@@ -83,8 +82,6 @@ def export_metrics_to_geotiff(metrics_ds: xr.Dataset, output_dir: str) -> list:
                     "El GeoTIFF se exportará sin georreferencia explícita."
                 )
             out_path = os.path.join(output_dir, f"{var_name}.tif")
-            # Escribir flag NoData explícito para que QGIS/ArcGIS
-            # reconozca los NaN como celdas vacías y no como valores extremos
             da = da.rio.write_nodata(np.nan, encoded=True)
             da.rio.to_raster(out_path, driver="GTiff")
             generated_files.append(out_path)
@@ -118,7 +115,6 @@ def export_events_to_csv(events_df: pd.DataFrame, output_dir: str, filename: str
 def export_zonal_statistics_to_csv(metrics_ds: xr.Dataset, output_dir: str, filename: str = "zonal_statistics.csv") -> str:
     """
     Calcula y exporta estadísticos zonales de cada métrica a CSV.
-    Usa numpy directamente sobre los valores del array para máxima compatibilidad.
     """
     os.makedirs(output_dir, exist_ok=True)
     records = []
@@ -187,18 +183,12 @@ def export_metrics_to_vector(
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Extraer coordenadas espaciales
     x_coords = metrics_ds.x.values
     y_coords = metrics_ds.y.values
-
-    # Crear malla de coordenadas
     xx, yy = np.meshgrid(x_coords, y_coords)
     xx_flat = xx.flatten()
     yy_flat = yy.flatten()
 
-    # Construir DataFrame con todas las métricas
-    # Forzar float64 explícitamente para evitar que tipos como uint8 (did_not_recover)
-    # provoquen que ArcGIS/QGIS interprete los campos como enteros sin decimales
     records = {"geometry": [Point(x, y) for x, y in zip(xx_flat, yy_flat)]}
 
     for var_name in metrics_ds.data_vars:
@@ -207,8 +197,6 @@ def export_metrics_to_vector(
 
     gdf = gpd.GeoDataFrame(records, crs=metrics_ds.rio.crs)
 
-    # Eliminar filas donde todas las métricas son NaN
-    # (píxeles fuera de la máscara vectorial o no expuestos)
     metric_cols = list(metrics_ds.data_vars)
     gdf = gdf.dropna(subset=metric_cols, how="all").reset_index(drop=True)
 
@@ -218,7 +206,6 @@ def export_metrics_to_vector(
 
     out_path = os.path.join(output_dir, filename)
     gdf.to_file(out_path, driver="GPKG")
-
     return out_path
 
 
@@ -236,11 +223,9 @@ def plot_drought_timeseries(
     """
     Genera la serie temporal del índice de sequía con las ventanas de análisis
     sombreadas. Usa la mediana espacial del índice sobre el área de estudio.
-    Muestra las ventanas del índice (sin lag) que definen el evento climático.
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Mediana espacial del índice
     if "x" in drought_index_da.dims and "y" in drought_index_da.dims:
         series = drought_index_da.median(dim=["x", "y"])
     else:
@@ -251,7 +236,6 @@ def plot_drought_timeseries(
 
     fig, ax = plt.subplots(figsize=(14, 5))
 
-    # Usar ventanas del índice (sin lag) para el sombreado
     index_windows = windows.get("index", windows)
     window_styles = {
         "pre_drought":    {"color": "#2196F3", "alpha": 0.12, "label": "Ventana Pre-sequía (Línea Base)"},
@@ -291,22 +275,39 @@ def plot_drought_timeseries(
     return out_path
 
 
-def plot_metrics_panel(metrics_ds: xr.Dataset, output_dir: str, filename: str = "metrics_panel.png") -> str:
+def plot_metrics_individual(
+    metrics_ds: xr.Dataset,
+    output_dir: str,
+    subfolder: str = "metricas_individuales"
+) -> list:
     """
-    Genera una figura compuesta con todas las métricas en panel.
-    Incluye drought_min y drought_median si están disponibles.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-    plot_vars = [v for v in _METRIC_STYLES if v in metrics_ds.data_vars and v != "did_not_recover"]
+    Exporta cada métrica como una figura PNG individual independiente.
 
+    Una figura por métrica facilita la inserción directa en la memoria del TFM
+    o en presentaciones sin necesidad de recortar un panel compuesto.
+
+    Parámetros:
+    -----------
+    metrics_ds : xr.Dataset
+        Dataset de salida de vegetation_impact_metrics().
+    output_dir : str
+        Directorio raíz de salida.
+    subfolder : str
+        Subcarpeta donde se guardan las figuras individuales.
+        Por defecto 'metricas_individuales'.
+
+    Retorna:
+    --------
+    list : Rutas a todos los archivos PNG generados.
+    """
+    out_dir = os.path.join(output_dir, subfolder)
+    os.makedirs(out_dir, exist_ok=True)
+    generated = []
+
+    plot_vars = [v for v in _METRIC_STYLES if v in metrics_ds.data_vars]
     extent = _get_extent(metrics_ds)
-    n_cols = 3
-    n_rows = int(np.ceil(len(plot_vars) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 5 * n_rows))
-    axes = np.array(axes).flatten()
 
-    for i, var_name in enumerate(plot_vars):
-        ax     = axes[i]
+    for var_name in plot_vars:
         da     = metrics_ds[var_name]
         data   = da.values
         style  = _METRIC_STYLES[var_name]
@@ -317,25 +318,26 @@ def plot_metrics_panel(metrics_ds: xr.Dataset, output_dir: str, filename: str = 
             abs_max = abs_max if abs_max > 1e-4 else 1.0
             norm = mcolors.TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
         else:
-            norm = mcolors.Normalize(vmin=float(np.nanmin(data)), vmax=float(np.nanmax(data)))
+            norm = mcolors.Normalize(
+                vmin=float(np.nanmin(data)),
+                vmax=float(np.nanmax(data))
+            )
 
+        fig, ax = plt.subplots(figsize=(8, 7))
         im = ax.imshow(data, cmap=style["cmap"], norm=norm,
                        interpolation="nearest", extent=extent, origin=origin)
-        ax.set_title(style["label"], fontsize=11, pad=8, weight="bold")
-        ax.set_xlabel("X (Coordenada)", fontsize=8)
-        ax.set_ylabel("Y (Coordenada)", fontsize=8)
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=0.8)
+        ax.set_title(style["label"], fontsize=13, pad=10, weight="bold")
+        ax.set_xlabel("X (Coordenada)", fontsize=9)
+        ax.set_ylabel("Y (Coordenada)", fontsize=9)
+        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=0.85)
+        plt.tight_layout()
 
-    for j in range(len(plot_vars), len(axes)):
-        axes[j].set_visible(False)
+        out_path = os.path.join(out_dir, f"{var_name}.png")
+        fig.savefig(out_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        generated.append(out_path)
 
-    fig.suptitle("Cartografía Integrada de Impacto y Vulnerabilidad Forestal Post-Sequía",
-                 fontsize=15, y=0.99, weight="bold")
-    plt.tight_layout()
-    out_path = os.path.join(output_dir, filename)
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
+    return generated
 
 
 def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "hotspots_map.png") -> str:
@@ -383,7 +385,6 @@ def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "h
 def plot_metrics_histograms(metrics_ds: xr.Dataset, output_dir: str, filename: str = "metrics_histograms.png") -> str:
     """
     Genera histogramas de distribución para cada métrica.
-    Útil para detectar sesgos o bimodalidades antes de publicar.
     """
     os.makedirs(output_dir, exist_ok=True)
     plot_vars = [v for v in _METRIC_STYLES if v in metrics_ds.data_vars and v != "did_not_recover"]
@@ -437,37 +438,12 @@ def plot_line_of_full_resilience(
     """
     Genera el scatter plot Resistencia vs Recuperación con la línea de resiliencia
     completa (Schwarz et al., 2020; Xu et al., 2024).
-
-    La línea de resiliencia completa (Rc = -Rt) representa la recuperación teórica
-    perfecta: el ecosistema ha recuperado exactamente lo que perdió. Puntos cercanos
-    a esta línea indican alta capacidad de recuperación. La regresión lineal observada
-    permite comparar el comportamiento del área con otros ecosistemas de la literatura.
-
-    El cuadrante superior izquierdo (Rc+Rt > 0) representa recuperación superior
-    al daño sufrido. El cuadrante inferior derecho representa recuperación incompleta.
-
-    Parámetros:
-    -----------
-    metrics_ds : xr.Dataset
-        Dataset de salida de vegetation_impact_metrics().
-    output_dir : str
-        Directorio de salida.
-    area_name : str
-        Nombre del área de estudio para el título (ej. 'Serra de Tramuntana').
-    filename : str
-        Nombre del archivo de salida.
-
-    Retorna:
-    --------
-    str : Ruta al archivo generado.
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Extraer Resistencia y Recuperación como arrays planos
     rt = metrics_ds["resistance"].values.flatten()
     rc = metrics_ds["recovery"].values.flatten()
 
-    # Eliminar NaN (píxeles fuera de máscara o no expuestos)
     mask = ~np.isnan(rt) & ~np.isnan(rc)
     rt = rt[mask]
     rc = rc[mask]
@@ -476,46 +452,31 @@ def plot_line_of_full_resilience(
         warnings.warn("Menos de 10 píxeles válidos para plot_line_of_full_resilience. Omitido.")
         return ""
 
-    # Regresión de Eje Mayor Reducido (RMA) en lugar de OLS.
-    # Ambas variables (Rt y Rc) provienen del NDVI satelital y tienen niveles
-    # de error similares. OLS asume que X (Rt) se mide sin error, lo que produce
-    # sesgo de atenuación (pendiente artificialmente plana). RMA minimiza la
-    # distancia ortogonal y es el estándar en ecología de resiliencia
-    # (Schwarz et al., 2020; Warton et al., 2006).
-    # Pendiente RMA = (std_Rc / std_Rt) * sign(correlación)
     _, _, r_value, p_value, _ = stats.linregress(rt, rc)
-    r2       = r_value ** 2
+    r2        = r_value ** 2
     sign_corr = np.sign(r_value)
     slope_rma = (np.std(rc) / np.std(rt)) * sign_corr
     intercept_rma = np.mean(rc) - slope_rma * np.mean(rt)
 
-    # Rango para líneas
-    rt_range = np.linspace(rt.min(), rt.max(), 200)
+    rt_range           = np.linspace(rt.min(), rt.max(), 200)
     rc_full_resilience = -rt_range
     rc_regression      = slope_rma * rt_range + intercept_rma
-    slope     = slope_rma
-    intercept = intercept_rma
 
     fig, ax = plt.subplots(figsize=(8, 7))
 
-    # Scatter de píxeles con densidad de color
     ax.scatter(rt, rc, alpha=0.3, s=8, color="#546e7a", zorder=2, label="Píxeles")
 
-    # Línea de resiliencia completa teórica
     ax.plot(rt_range, rc_full_resilience, color="#2c3e50", linewidth=2.0,
             linestyle="--", zorder=4, label="Resiliencia completa (Rc = −Rt)")
 
-    # Regresión observada
-    p_str = f"p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}"
+    p_str = "p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}"
     ax.plot(rt_range, rc_regression, color="#e74c3c", linewidth=2.0,
             linestyle="-", zorder=5,
-            label=f"Regresión RMA\ny = {slope:.2f}x + {intercept:.2f} | R² = {r2:.2f} | {p_str}")
+            label=f"Regresión RMA\ny = {slope_rma:.2f}x + {intercept_rma:.2f} | R² = {r2:.2f} | {p_str}")
 
-    # Línea de referencia Rc+Rt = 0
     ax.axline((0, 0), slope=-1, color="#95a5a6", linewidth=0.8,
               linestyle=":", alpha=0.5, zorder=1)
 
-    # Anotaciones de cuadrantes
     ax.text(0.02, 0.97, "Rc + Rt > 0\n(Superrecuperación)",
             transform=ax.transAxes, fontsize=8, color="#27ae60",
             verticalalignment="top", alpha=0.7)

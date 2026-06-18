@@ -14,7 +14,7 @@ from drought_impact.export import (
     export_zonal_statistics_to_csv,
     export_metrics_to_vector,
     plot_drought_timeseries,
-    plot_metrics_panel,
+    plot_metrics_individual,
     plot_hotspots,
     plot_metrics_histograms,
     plot_line_of_full_resilience
@@ -258,7 +258,7 @@ def run_drought_impact_pipeline(
         dataset[drought_index_var], windows, output_dir,
         index_name = drought_index_var
     )
-    results["plot_panel"]      = plot_metrics_panel(metrics_ds, output_dir)
+    results["plot_individual"] = plot_metrics_individual(metrics_ds, output_dir)
     results["plot_hotspots"]   = plot_hotspots(clustering_ds, output_dir)
     results["plot_histograms"] = plot_metrics_histograms(metrics_ds, output_dir)
     results["plot_resilience"] = plot_line_of_full_resilience(

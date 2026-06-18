@@ -31,7 +31,7 @@ print(f"Dataset recortado: {dict(ds_clip.sizes)}")
 print("\n--- PASO 2a: Detección de eventos ---")
 events = drought_impact.detect_drought_events(
     ds_clip,
-    severity_threshold = -2.74,
+    severity_threshold = -1.5,
     min_duration       = 6,
     pooling_periods    = 4,
     plot               = True,
@@ -95,51 +95,10 @@ metrics_ds = drought_impact.vegetation_impact_metrics(
     min_recovery_periods = 4
 )
 
-_METRIC_STYLES = {
-    "resistance":          {"cmap": "RdYlGn",   "label": "Resistencia (ΔSNDVI)",              "diverging": True},
-    "recovery":            {"cmap": "RdYlGn",   "label": "Recuperación (ΔSNDVI)",             "diverging": True},
-    "resilience":          {"cmap": "RdYlGn",   "label": "Resiliencia Neta (ΔSNDVI)",         "diverging": True},
-    "accumulated_deficit": {"cmap": "YlOrRd_r", "label": "Déficit Acumulado (ΔSNDVI·q)",      "diverging": False},
-    "recovery_time":       {"cmap": "YlOrRd",   "label": "Tiempo de Recuperación (quincenas)","diverging": False},
-    "drought_intensity":   {"cmap": "RdBu",     "label": "Intensidad Sequía (mín. índice)",   "diverging": True},
-}
-
-extent = [
-    float(metrics_ds.x.min()), float(metrics_ds.x.max()),
-    float(metrics_ds.y.min()), float(metrics_ds.y.max())
-]
-
-individual_dir = os.path.join(OUTPUT_DIR, "metricas_individuales")
-os.makedirs(individual_dir, exist_ok=True)
-
-for var_name, style in _METRIC_STYLES.items():
-    if var_name not in metrics_ds.data_vars:
-        continue
-
-    da   = metrics_ds[var_name]
-    data = da.values
-    origin = "upper" if float(da.y[0]) > float(da.y[-1]) else "lower"
-
-    if style["diverging"]:
-        abs_max = float(np.nanpercentile(np.abs(data), 97))
-        abs_max = abs_max if abs_max > 1e-4 else 1.0
-        norm = mcolors.TwoSlopeNorm(vmin=-abs_max, vcenter=0, vmax=abs_max)
-    else:
-        norm = mcolors.Normalize(vmin=float(np.nanmin(data)), vmax=float(np.nanmax(data)))
-
-    fig, ax = plt.subplots(figsize=(8, 7))
-    im = ax.imshow(data, cmap=style["cmap"], norm=norm,
-                   interpolation="nearest", extent=extent, origin=origin)
-    ax.set_title(style["label"], fontsize=13, pad=10, weight="bold")
-    ax.set_xlabel("X (Coordenada)", fontsize=9)
-    ax.set_ylabel("Y (Coordenada)", fontsize=9)
-    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=0.85)
-    plt.tight_layout()
-
-    out_path = os.path.join(individual_dir, f"{var_name}.png")
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  Exportada: {out_path}")
+print("\n--- Exportando métricas individuales ---")
+individual_paths = drought_impact.plot_metrics_individual(metrics_ds, OUTPUT_DIR)
+for p in individual_paths:
+    print(f"  Exportada: {p}")
 
 # =============================================================================
 # PASO 5: Diagnóstico ventanas SNDVI

@@ -59,7 +59,7 @@ from drought_impact.export import (
     export_zonal_statistics_to_csv,
     export_metrics_to_vector,
     plot_drought_timeseries,
-    plot_metrics_panel,
+    plot_metrics_individual,
     plot_hotspots,
     plot_metrics_histograms,
     plot_line_of_full_resilience
@@ -98,7 +98,7 @@ __all__ = [
 
     # Visualización
     "plot_drought_timeseries",
-    "plot_metrics_panel",
+    "plot_metrics_individual",
     "plot_hotspots",
     "plot_metrics_histograms",
     "plot_line_of_full_resilience"
