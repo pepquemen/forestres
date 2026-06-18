@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drought_impact"
+version = "0.1.0"
+authors = [
+  { name="Josep Quevedo Méndez", email="josep.quevedo@uib.cat" },
+]
+description = "Automated library for assessing spatial impact and forest vulnerability to droughts."
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: GIS",
+]
+dependencies = [
+    "xarray>=2023.1",
+    "rioxarray>=0.15",
+    "geopandas>=0.14",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
+    "matplotlib>=3.7",
+    "netCDF4>=1.6",
+    "shapely>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "dask>=2023.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
