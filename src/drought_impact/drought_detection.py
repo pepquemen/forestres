@@ -296,9 +296,65 @@ def compute_lag_correlation(
 
     if plot:
         import os
-        out_dir = os.path.dirname(output_path) if output_path else "."
-        fname   = os.path.basename(output_path) if output_path else "lag_correlation.png"
-        plot_lag_correlation(corr_df, out_dir, filename=fname, index_name=index_name)
+        from matplotlib.patches import Patch
+
+        best_lag = corr_df.loc[corr_df["correlation"].idxmax()]
+        colors = [
+            "#e74c3c" if row["lag_periods"] == best_lag["lag_periods"] else "#546e7a"
+            for _, row in corr_df.iterrows()
+        ]
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        bars = ax.bar(
+            corr_df["lag_periods"],
+            corr_df["correlation"],
+            color=colors,
+            edgecolor="white",
+            linewidth=0.5,
+            width=0.7
+        )
+
+        for bar, (_, row) in zip(bars, corr_df.iterrows()):
+            if not np.isnan(row["correlation"]):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.002,
+                    f"{row['correlation']:.4f}",
+                    ha="center", va="bottom",
+                    fontsize=7.5, color="#2c3e50"
+                )
+
+        ax.set_xticks(corr_df["lag_periods"])
+        ax.set_xticklabels(
+            [f"Lag {int(r['lag_periods'])}\n(~{r['lag_months']} m)"
+             for _, r in corr_df.iterrows()],
+            fontsize=8
+        )
+        ax.set_xlabel("Lag temporal (quincenas)", fontsize=11)
+        ax.set_ylabel("Correlación de Pearson media (píxel a píxel)", fontsize=11)
+        ax.set_title(
+            f"Correlación {index_name} — SNDVI por lag temporal\n"
+            f"Lag óptimo: {int(best_lag['lag_periods'])} quincenas "
+            f"(~{best_lag['lag_months']} meses) | r = {best_lag['correlation']:.4f}",
+            fontsize=12, pad=10
+        )
+        ax.set_ylim(0, corr_df["correlation"].max() * 1.12)
+        ax.grid(axis="y", linestyle=":", alpha=0.4)
+
+        legend_elements = [
+            Patch(facecolor="#e74c3c", label=f"Lag óptimo ({int(best_lag['lag_periods'])} quincenas)"),
+            Patch(facecolor="#546e7a", label="Otros lags")
+        ]
+        ax.legend(handles=legend_elements, fontsize=9, framealpha=0.9)
+
+        plt.tight_layout()
+
+        if output_path:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True) if os.path.dirname(output_path) else None
+            fig.savefig(output_path, dpi=200, bbox_inches="tight")
+            plt.close(fig)
+        else:
+            plt.show()
 
     return corr_df
 
