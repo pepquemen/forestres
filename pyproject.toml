@@ -27,6 +27,7 @@ dependencies = [
     "matplotlib>=3.7",
     "netCDF4>=1.6",
     "shapely>=2.0",
+    "pyproj>=3.6",
 ]
 
 [project.optional-dependencies]
