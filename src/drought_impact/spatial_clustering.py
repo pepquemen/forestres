@@ -3,125 +3,120 @@ import numpy as np
 from scipy.ndimage import convolve
 
 
-# =============================================================================
-# FUNCIÓN PRIVADA COMPARTIDA
-# =============================================================================
+# --- Shared internal helper
 
 def _compute_spatial_lag(clean_data: np.ndarray, is_valid_mask: np.ndarray, kernel: np.ndarray) -> tuple:
     """
-    Función interna compartida. Calcula la suma local ponderada y la matriz de pesos
-    espaciales (número de vecinos válidos) mediante convolución vectorizada.
+    Compute the local weighted sum and spatial weight matrix (number of valid
+    neighbours) via vectorised convolution.
 
-    La estrategia para gestionar NaN es:
-      1. Reemplazar NaN por 0 antes de convolucionar (clean_data).
-      2. Convolucionar la máscara binaria para saber cuántos vecinos válidos
-         había realmente en cada ventana (w_matrix).
-      3. El llamador divide local_sum / w_matrix para obtener medias no sesgadas.
+    NaN handling strategy:
+      1. Replace NaN with 0 before convolving (clean_data).
+      2. Convolve the binary mask to count how many valid neighbours were
+         actually present in each window (w_matrix).
+      3. The caller divides local_sum / w_matrix to obtain unbiased means.
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     clean_data : np.ndarray
-        Array 2D con NaN reemplazados por 0.
+        2D array with NaN replaced by 0.
     is_valid_mask : np.ndarray
-        Máscara booleana: True donde el dato es válido.
+        Boolean mask: True where the value is valid.
     kernel : np.ndarray
-        Kernel de convolución que define la vecindad espacial.
+        Convolution kernel defining the spatial neighbourhood.
 
-    Retorna:
-    --------
-    tuple : (local_sum, w_matrix)
-        local_sum : suma ponderada de los valores vecinos por píxel.
-        w_matrix  : número de vecinos válidos por píxel.
+    Returns
+    -------
+    tuple
+        (local_sum, w_matrix) where local_sum is the weighted neighbour sum
+        per pixel and w_matrix is the count of valid neighbours per pixel.
     """
     local_sum = convolve(clean_data, kernel, mode='constant', cval=0.0)
     w_matrix = convolve(is_valid_mask.astype(float), kernel, mode='constant', cval=0.0)
     return local_sum, w_matrix
 
 
-# =============================================================================
-# GETIS-ORD GI*
-# =============================================================================
+# --- Getis-Ord Gi*
 
 def calculate_getis_ord_gi_star(data_array: xr.DataArray, kernel_size: int = 3, min_valid_neighbors: int = 3) -> xr.Dataset:
     """
-    Calcula el estadístico espacial Getis-Ord Gi* local sobre un mapa 2D continuo,
-    gestionando rigurosamente los bordes de máscaras vectoriales (NaN).
+    Compute the local Getis-Ord Gi* spatial statistic on a 2D continuous map,
+    with rigorous handling of vector mask edges (NaN).
 
-    El Gi* identifica dónde se concentran valores estadísticamente altos o bajos
-    en el espacio (clusters). A diferencia del Gi sin asterisco, incluye el propio
-    píxel en la suma local, lo que lo hace más sensible a los valores extremos
-    del propio píxel analizado.
+    Gi* identifies where statistically high or low values are spatially
+    clustered. Unlike the Gi without asterisk, it includes the target pixel
+    in the local sum, making it more sensitive to the pixel's own extreme value.
 
-    NOTA DE LIMITACIÓN METODOLÓGICA:
-        El estadístico Gi* asume estacionariedad espacial (media y varianza
-        constantes en toda la zona de estudio). Esta asunción es razonable
-        para áreas pequeñas y climáticamente homogéneas como parques naturales
-        o cuencas. Para análisis a escala regional o peninsular, los resultados
-        deben interpretarse con cautela ya que la media global puede enmascarar
-        heterogeneidades climáticas estructurales (Getis & Ord, 1992).
+    Methodological note:
+        Gi* assumes spatial stationarity (constant mean and variance across the
+        study area). This is reasonable for small, climatically homogeneous areas
+        such as nature parks or catchments. For regional analyses, results should
+        be interpreted with caution as the global mean may mask structural climatic
+        heterogeneities (Getis & Ord, 1992).
 
-    Interpretación ecológica recomendada:
-    - Sobre 'accumulated_deficit' o 'recovery_time':
-        Hotspot (Z alto)  → zona de alta vulnerabilidad o lenta recuperación.
-        Coldspot (Z bajo) → refugio climático o zona de rápida recuperación.
-    - Sobre 'resilience' o 'resistance':
-        Los signos se invierten; consultar la documentación de vegetation_metrics.
+    Ecological interpretation:
+    - Applied to 'accumulated_deficit' or 'recovery_time':
+        Hotspot (high Z)  -- high vulnerability or slow recovery zone.
+        Coldspot (low Z)  -- climatic refugium or rapid recovery zone.
+    - Applied to 'resilience' or 'resistance':
+        Signs are inverted; see vegetation_metrics documentation.
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     data_array : xr.DataArray
-        Mapa 2D estático (ej. metrics_ds['accumulated_deficit']).
-        No debe tener dimensión temporal.
+        Static 2D map (e.g. metrics_ds['accumulated_deficit']).
+        Must not have a time dimension.
     kernel_size : int
-        Tamaño del kernel Queen cuadrado (debe ser impar: 3, 5, 7...).
-        Define el vecindario espacial de cada píxel. Con resolución de 1.1 km
-        (datos CSIC): kernel 3x3 evalúa ~10 km², 5x5 evalúa ~30 km², 7x7 ~60 km².
-        Por defecto 3, adecuado para procesos de decaimiento forestal local.
+        Size of the square Queen kernel (must be odd: 3, 5, 7...).
+        Defines the spatial neighbourhood of each pixel. At 1.1 km resolution:
+        3x3 covers ~10 km2, 5x5 ~30 km2, 7x7 ~60 km2.
+        Default 3, appropriate for local forest decline processes.
     min_valid_neighbors : int
-        Número mínimo de celdas válidas alrededor del píxel para aceptar el
-        resultado. Píxeles muy aislados o en bordes extremos quedan como NaN.
+        Minimum number of valid cells around a pixel to accept its result.
+        Highly isolated pixels or extreme edge pixels are set to NaN.
 
-    Retorna:
-    --------
-    xr.Dataset con dos capas:
-        'z_score'    : Valor continuo del estadístico Gi* (para cartografía fina).
-        'clustering' : Clasificación discreta en 5 niveles de confianza:
-                        3 → Hotspot  99% | 2 → Hotspot  95%
-                        0 → No significativo
-                       -2 → Coldspot 95% | -3 → Coldspot 99%
+    Returns
+    -------
+    xr.Dataset
+        Two layers:
+            'z_score'    : Continuous Gi* statistic (for fine cartography).
+            'clustering' : Discrete classification into 5 confidence levels:
+                            3 -> Hotspot  99% | 2 -> Hotspot  95%
+                            0 -> Not significant
+                           -2 -> Coldspot 95% | -3 -> Coldspot 99%
     """
-    # 1. Extraer numpy y construir máscaras
+    # Extract numpy array and build validity mask
     raw_data = data_array.compute().values
     is_valid_mask = ~np.isnan(raw_data)
 
-    # 2. Estadísticos globales (solo píxeles válidos)
+    # Global statistics (valid pixels only)
     global_mean = float(np.nanmean(raw_data))
     global_std = float(np.nanstd(raw_data))
     n_valid = int(np.sum(is_valid_mask))
 
     if global_std < 1e-6:
         raise ValueError(
-            "La desviación estándar del mapa es cercana a cero. "
-            "No hay variabilidad espacial suficiente para aplicar Gi*."
+            "The map standard deviation is near zero. "
+            "Insufficient spatial variability to apply Gi*."
         )
     if n_valid < 9:
         raise ValueError(
-            f"Solo hay {n_valid} píxeles válidos. Se necesitan al menos 9 para "
-            "calcular el estadístico con un kernel 3x3."
+            f"Only {n_valid} valid pixels found. At least 9 are required "
+            "to compute the statistic with a 3x3 kernel."
         )
 
-    # 3. Kernel Queen configurable — Gi* incluye el píxel central (peso = 1)
+    # Queen kernel -- Gi* includes the target pixel (weight = 1)
     if kernel_size % 2 == 0:
-        raise ValueError(f"kernel_size debe ser impar (3, 5, 7...). Recibido: {kernel_size}.")
+        raise ValueError(f"kernel_size must be odd (3, 5, 7...). Received: {kernel_size}.")
     kernel = np.ones((kernel_size, kernel_size))
     clean_data = np.where(is_valid_mask, raw_data, 0.0)
 
-    # 4. Lag espacial compartido
+    # Spatial lag (shared helper)
     local_sum, w_matrix = _compute_spatial_lag(clean_data, is_valid_mask, kernel)
 
-    # 5. Fórmula formal de Getis-Ord Gi*
-    #    Numerador   : ΣLocal - (μ_global × W)
-    #    Denominador : σ_global × √[(n×W - W²) / (n-1)]
+    # Formal Getis-Ord Gi* formula:
+    #   Numerator   : sum_local - (global_mean * W)
+    #   Denominator : global_std * sqrt[(n * W - W^2) / (n - 1)]
     numerator = local_sum - (global_mean * w_matrix)
 
     inner_sqrt = (n_valid * w_matrix - w_matrix ** 2) / (n_valid - 1)
@@ -131,12 +126,12 @@ def calculate_getis_ord_gi_star(data_array: xr.DataArray, kernel_size: int = 3, 
     with np.errstate(divide='ignore', invalid='ignore'):
         z_score = numerator / denominator
 
-    # 6. Filtros de calidad analítica
+    # Quality filters
     z_score = np.where(w_matrix >= min_valid_neighbors, z_score, np.nan)
     z_score = np.where(is_valid_mask, z_score, np.nan)
 
-    # 7. Clasificación discreta robusta con np.select
-    #    El orden importa: condiciones más restrictivas primero
+    # Discrete classification -- more restrictive conditions first
+    # Critical values of the standard normal distribution:
     conditions = [
         z_score > 2.58,
         z_score > 1.96,
@@ -147,7 +142,7 @@ def calculate_getis_ord_gi_star(data_array: xr.DataArray, kernel_size: int = 3, 
     clustering = np.select(conditions, choices, default=0).astype(float)
     clustering = np.where(is_valid_mask, clustering, np.nan)
 
-    # 8. Reconstruir a xarray preservando coordenadas espaciales
+    # Reconstruct as xarray, preserving spatial coordinates
     output_ds = xr.Dataset(
         {
             "z_score":    (["y", "x"], z_score),

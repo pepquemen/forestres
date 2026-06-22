@@ -11,19 +11,17 @@ from scipy import stats
 from shapely.geometry import Point
 
 
-# =============================================================================
-# CONFIGURACIÓN INTERNA DE ESTILOS
-# =============================================================================
+# --- Internal style configuration
 
 _METRIC_STYLES = {
-    "resistance":          {"cmap": "RdYlGn",   "label": "Resistencia (ΔSNDVI)",               "diverging": True},
-    "recovery":            {"cmap": "RdYlGn",   "label": "Recuperación (ΔSNDVI)",              "diverging": True},
-    "resilience":          {"cmap": "RdYlGn",   "label": "Resiliencia Neta (ΔSNDVI)",          "diverging": True},
-    "accumulated_deficit": {"cmap": "YlOrRd_r", "label": "Déficit Acumulado (ΔSNDVI·q)",       "diverging": False},
-    "recovery_time":       {"cmap": "YlOrRd",   "label": "Tiempo de Recuperación (quincenas)", "diverging": False},
-    "did_not_recover":     {"cmap": "Reds",      "label": "Estado Crónico No Recuperado",       "diverging": False},
-    "drought_min":         {"cmap": "RdBu",      "label": "Intensidad Sequía (mínimo índice)",  "diverging": True},
-    "drought_median":      {"cmap": "RdBu",      "label": "Intensidad Sequía (mediana índice)", "diverging": True},
+    "resistance":          {"cmap": "RdYlGn",   "label": "Resistance (ΔSNDVI)",                "diverging": True},
+    "recovery":            {"cmap": "RdYlGn",   "label": "Recovery (ΔSNDVI)",                  "diverging": True},
+    "resilience":          {"cmap": "RdYlGn",   "label": "Resilience (ΔSNDVI)",                "diverging": True},
+    "accumulated_deficit": {"cmap": "YlOrRd_r", "label": "Accumulated Deficit (ΔSNDVI·q)",     "diverging": False},
+    "recovery_time":       {"cmap": "YlOrRd",   "label": "Recovery Time (biweekly periods)",   "diverging": False},
+    "did_not_recover":     {"cmap": "Reds",      "label": "Did Not Recover",                   "diverging": False},
+    "drought_min":         {"cmap": "RdBu",      "label": "Drought Intensity (minimum)",       "diverging": True},
+    "drought_median":      {"cmap": "RdBu",      "label": "Drought Intensity (median)",        "diverging": True},
 }
 
 _GI_STAR_STYLES = {
@@ -35,11 +33,11 @@ _GI_STAR_STYLES = {
         -3: "#2166ac",
     },
     "labels": {
-         3: "Hotspot: Vulnerabilidad Crítica (99% conf.)",
-         2: "Hotspot: Vulnerabilidad Alta (95% conf.)",
-         0: "Sin significancia espacial",
-        -2: "Coldspot: Recuperación Activa (95% conf.)",
-        -3: "Coldspot: Refugio Climático Estable (99% conf.)",
+         3: "Hotspot 99% confidence",
+         2: "Hotspot 95% confidence",
+         0: "Not significant",
+        -2: "Coldspot 95% confidence",
+        -3: "Coldspot 99% confidence",
     }
 }
 
@@ -59,14 +57,12 @@ def _get_extent(ds_or_da) -> list:
     ]
 
 
-# =============================================================================
-# EXPORTACIÓN DE DATOS
-# =============================================================================
+# --- Data export
 
 def export_metrics_to_geotiff(metrics_ds: xr.Dataset, output_dir: str) -> list:
     """
-    Exporta cada métrica del Dataset como un GeoTIFF individual georreferenciado.
-    Un archivo por métrica facilita la carga directa en QGIS sin seleccionar bandas.
+    Export each metric in the Dataset as an individual georeferenced GeoTIFF.
+    One file per metric allows direct loading in QGIS without selecting bands.
     """
     os.makedirs(output_dir, exist_ok=True)
     generated_files = []
@@ -78,22 +74,22 @@ def export_metrics_to_geotiff(metrics_ds: xr.Dataset, output_dir: str) -> list:
             da = da.rio.set_spatial_dims(x_dim="x", y_dim="y")
             if not da.rio.crs:
                 warnings.warn(
-                    f"La variable '{var_name}' no tiene CRS definido. "
-                    "El GeoTIFF se exportará sin georreferencia explícita."
+                    f"Variable '{var_name}' has no CRS defined. "
+                    "GeoTIFF will be exported without explicit georeferencing."
                 )
             out_path = os.path.join(output_dir, f"{var_name}.tif")
             da = da.rio.write_nodata(np.nan, encoded=True)
             da.rio.to_raster(out_path, driver="GTiff")
             generated_files.append(out_path)
         else:
-            warnings.warn(f"La variable '{var_name}' carece de dimensiones x/y. Omitida.")
+            warnings.warn(f"Variable '{var_name}' has no x/y dimensions. Skipped.")
 
     return generated_files
 
 
 def export_clustering_to_geotiff(clustering_ds: xr.Dataset, output_dir: str, name: str = "hotspots") -> str:
     """
-    Exporta el resultado del análisis Gi* (z_score y clustering) como GeoTIFF multibanda.
+    Export the Gi* result (z_score and clustering) as a multi-band GeoTIFF.
     """
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, f"{name}_gi_star.tif")
@@ -104,7 +100,7 @@ def export_clustering_to_geotiff(clustering_ds: xr.Dataset, output_dir: str, nam
 
 def export_events_to_csv(events_df: pd.DataFrame, output_dir: str, filename: str = "drought_events.csv") -> str:
     """
-    Exporta la tabla de eventos detectados por detect_drought_events() a CSV.
+    Export the event table produced by detect_drought_events() to CSV.
     """
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, filename)
@@ -114,7 +110,7 @@ def export_events_to_csv(events_df: pd.DataFrame, output_dir: str, filename: str
 
 def export_zonal_statistics_to_csv(metrics_ds: xr.Dataset, output_dir: str, filename: str = "zonal_statistics.csv") -> str:
     """
-    Calcula y exporta estadísticos zonales de cada métrica a CSV.
+    Compute and export zonal statistics for each metric to CSV.
     """
     os.makedirs(output_dir, exist_ok=True)
     records = []
@@ -124,7 +120,7 @@ def export_zonal_statistics_to_csv(metrics_ds: xr.Dataset, output_dir: str, file
         values = values[~np.isnan(values)]
 
         if len(values) == 0:
-            warnings.warn(f"La capa '{var_name}' está vacía de datos válidos. Omitida.")
+            warnings.warn(f"Layer '{var_name}' has no valid data. Skipped.")
             continue
 
         record = {
@@ -158,28 +154,29 @@ def export_metrics_to_vector(
     filename: str = "metrics_points.gpkg"
 ) -> str:
     """
-    Exporta todas las métricas como capa vectorial de puntos en GeoPackage.
+    Export all metrics as a point vector layer in GeoPackage format.
 
-    Cada píxel válido del área de estudio se convierte en un punto con todas
-    las métricas como campos en la tabla de atributos. Permite realizar consultas
-    espaciales compuestas en QGIS, ArcGIS o GeoPandas, por ejemplo:
+    Each valid pixel in the study area becomes a point with all metrics as
+    attribute fields. Enables compound spatial queries in QGIS, ArcGIS, or
+    GeoPandas, for example:
 
         resistance < -0.5 AND drought_min < -3.0
         recovery_time > 15 AND resistance < -0.3
         did_not_recover = 1 AND drought_min < -4.0
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     metrics_ds : xr.Dataset
-        Dataset de salida de vegetation_impact_metrics().
+        Output of vegetation_impact_metrics().
     output_dir : str
-        Directorio de salida.
+        Output directory.
     filename : str
-        Nombre del archivo GeoPackage de salida.
+        Name of the output GeoPackage file.
 
-    Retorna:
-    --------
-    str : Ruta al archivo GeoPackage generado.
+    Returns
+    -------
+    str
+        Path to the generated GeoPackage file.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -201,7 +198,7 @@ def export_metrics_to_vector(
     gdf = gdf.dropna(subset=metric_cols, how="all").reset_index(drop=True)
 
     if len(gdf) == 0:
-        warnings.warn("No hay píxeles válidos para exportar como vectorial.")
+        warnings.warn("No valid pixels to export as a vector layer.")
         return ""
 
     out_path = os.path.join(output_dir, filename)
@@ -209,20 +206,18 @@ def export_metrics_to_vector(
     return out_path
 
 
-# =============================================================================
-# GRÁFICOS
-# =============================================================================
+# --- Plots
 
 def plot_drought_timeseries(
     drought_index_da: xr.DataArray,
     windows: dict,
     output_dir: str,
-    index_name: str = "Índice de Sequía",
+    index_name: str = "Drought Index",
     filename: str = "drought_timeseries.png"
 ) -> str:
     """
-    Genera la serie temporal del índice de sequía con las ventanas de análisis
-    sombreadas. Usa la mediana espacial del índice sobre el área de estudio.
+    Plot the drought index time series with analysis windows shaded.
+    Uses the spatial median of the index over the study area.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -238,9 +233,9 @@ def plot_drought_timeseries(
 
     index_windows = windows.get("index", windows)
     window_styles = {
-        "pre_drought":    {"color": "#2196F3", "alpha": 0.12, "label": "Ventana Pre-sequía (Línea Base)"},
-        "during_drought": {"color": "#F44336", "alpha": 0.18, "label": "Periodo del Evento Extremo"},
-        "post_drought":   {"color": "#4CAF50", "alpha": 0.12, "label": "Ventana Post-sequía (Recuperación)"},
+        "pre_drought":    {"color": "#2196F3", "alpha": 0.12, "label": "Pre-drought"},
+        "during_drought": {"color": "#F44336", "alpha": 0.18, "label": "Drought event"},
+        "post_drought":   {"color": "#4CAF50", "alpha": 0.12, "label": "Post-drought"},
     }
 
     for window_key, style in window_styles.items():
@@ -255,16 +250,15 @@ def plot_drought_timeseries(
     ax.fill_between(times, values, 0, where=(values < 0),  color="#e74c3c", alpha=0.20, zorder=2)
     ax.fill_between(times, values, 0, where=(values >= 0), color="#2ecc71", alpha=0.15, zorder=2)
 
-    for threshold, ls, label in [(-1.0, "--", "Umbral: Sequía Moderada (-1.0)"),
-                                  (-1.5, "-.", "Umbral: Sequía Severa (-1.5)"),
-                                  (-2.0, ":",  "Umbral: Sequía Extrema (-2.0)")]:
+    for threshold, ls, label in [(-1.0, "--", "Moderate drought"),
+                                  (-1.5, "-.", "Severe drought"),
+                                  (-2.0, ":",  "Extreme drought")]:
         ax.axhline(threshold, color="#962d2d", linewidth=0.9, linestyle=ls, alpha=0.7, label=label)
 
     ax.axhline(0, color="black", linewidth=0.7, alpha=0.5)
-    ax.set_xlabel("Fecha", fontsize=11, labelpad=8)
+    ax.set_xlabel("Date", fontsize=11, labelpad=8)
     ax.set_ylabel(index_name, fontsize=11)
-    ax.set_title(f"Evolución del {index_name} — Ventanas de análisis (índice sin lag)",
-                 fontsize=13, pad=12)
+    ax.set_title("Drought Index Time Series", fontsize=13, pad=12)
     ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
     ax.grid(axis="y", linestyle=":", alpha=0.5)
 
@@ -278,27 +272,24 @@ def plot_drought_timeseries(
 def plot_metrics_individual(
     metrics_ds: xr.Dataset,
     output_dir: str,
-    subfolder: str = "metricas_individuales"
+    subfolder: str = "individual_metrics"
 ) -> list:
     """
-    Exporta cada métrica como una figura PNG individual independiente.
+    Export each metric as an individual PNG figure.
 
-    Una figura por métrica facilita la inserción directa en la memoria del TFM
-    o en presentaciones sin necesidad de recortar un panel compuesto.
-
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     metrics_ds : xr.Dataset
-        Dataset de salida de vegetation_impact_metrics().
+        Output of vegetation_impact_metrics().
     output_dir : str
-        Directorio raíz de salida.
+        Root output directory.
     subfolder : str
-        Subcarpeta donde se guardan las figuras individuales.
-        Por defecto 'metricas_individuales'.
+        Subdirectory for the individual figures.
 
-    Retorna:
-    --------
-    list : Rutas a todos los archivos PNG generados.
+    Returns
+    -------
+    list
+        Paths to all generated PNG files.
     """
     out_dir = os.path.join(output_dir, subfolder)
     os.makedirs(out_dir, exist_ok=True)
@@ -327,8 +318,8 @@ def plot_metrics_individual(
         im = ax.imshow(data, cmap=style["cmap"], norm=norm,
                        interpolation="nearest", extent=extent, origin=origin)
         ax.set_title(style["label"], fontsize=13, pad=10, weight="bold")
-        ax.set_xlabel("X (Coordenada)", fontsize=9)
-        ax.set_ylabel("Y (Coordenada)", fontsize=9)
+        ax.set_xlabel("X coordinate", fontsize=9)
+        ax.set_ylabel("Y coordinate", fontsize=9)
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04, shrink=0.85)
         plt.tight_layout()
 
@@ -342,8 +333,7 @@ def plot_metrics_individual(
 
 def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "hotspots_map.png") -> str:
     """
-    Genera la cartografía del análisis Getis-Ord Gi* con los 5 niveles de
-    confianza estadística completos.
+    Plot the Getis-Ord Gi* analysis map with all five statistical confidence levels.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -362,10 +352,9 @@ def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "h
     ax.imshow(clustering_raw, cmap=cmap, norm=norm,
               interpolation="nearest", extent=extent, origin=origin)
 
-    ax.set_title("Mapa de Patrones Espaciales de Vulnerabilidad — Getis-Ord Gi*",
-                 fontsize=13, pad=12, weight="bold")
-    ax.set_xlabel("Coordenada X", fontsize=9)
-    ax.set_ylabel("Coordenada Y", fontsize=9)
+    ax.set_title("Spatial Vulnerability Clusters", fontsize=13, pad=12, weight="bold")
+    ax.set_xlabel("X coordinate", fontsize=9)
+    ax.set_ylabel("Y coordinate", fontsize=9)
     ax.grid(True, linestyle="--", alpha=0.3)
 
     patches = [
@@ -384,7 +373,7 @@ def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "h
 
 def plot_metrics_histograms(metrics_ds: xr.Dataset, output_dir: str, filename: str = "metrics_histograms.png") -> str:
     """
-    Genera histogramas de distribución para cada métrica.
+    Generate distribution histograms for each metric.
     """
     os.makedirs(output_dir, exist_ok=True)
     plot_vars = [v for v in _METRIC_STYLES if v in metrics_ds.data_vars and v != "did_not_recover"]
@@ -401,27 +390,26 @@ def plot_metrics_histograms(metrics_ds: xr.Dataset, output_dir: str, filename: s
         style      = _METRIC_STYLES[var_name]
 
         if len(clean_data) == 0:
-            ax.set_title(f"{style['label']} (Sin datos)")
+            ax.set_title(f"{style['label']} (No data)")
             continue
 
         mean_val   = float(np.mean(clean_data))
         median_val = float(np.median(clean_data))
 
         ax.hist(clean_data, bins=45, color="#455a64", alpha=0.8, edgecolor="white", linewidth=0.3)
-        ax.axvline(mean_val,   color="#e74c3c", linewidth=1.5, linestyle="--", label=f"Media: {mean_val:.3f}")
-        ax.axvline(median_val, color="#3498db", linewidth=1.5, linestyle=":",  label=f"Mediana: {median_val:.3f}")
+        ax.axvline(mean_val,   color="#e74c3c", linewidth=1.5, linestyle="--", label=f"Mean: {mean_val:.3f}")
+        ax.axvline(median_val, color="#3498db", linewidth=1.5, linestyle=":",  label=f"Median: {median_val:.3f}")
 
         ax.set_title(style["label"], fontsize=10, weight="bold", pad=6)
-        ax.set_xlabel("Rango de Valores", fontsize=8)
-        ax.set_ylabel("Frecuencia (Píxeles)", fontsize=8)
+        ax.set_xlabel("Value", fontsize=8)
+        ax.set_ylabel("Pixel count", fontsize=8)
         ax.legend(fontsize=8, framealpha=0.8)
         ax.grid(axis="y", linestyle=":", alpha=0.4)
 
     for j in range(len(plot_vars), len(axes)):
         axes[j].set_visible(False)
 
-    fig.suptitle("Distribución de Frecuencias de las Métricas de Impacto Ecológico",
-                 fontsize=14, y=1.01, weight="bold")
+    fig.suptitle("Metric Distributions", fontsize=14, y=1.01, weight="bold")
     plt.tight_layout()
     out_path = os.path.join(output_dir, filename)
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
@@ -433,11 +421,11 @@ def plot_line_of_full_resilience(
     metrics_ds: xr.Dataset,
     output_dir: str,
     filename: str = "line_of_full_resilience.png",
-    area_name: str = "Área de estudio"
+    area_name: str = "Study area"
 ) -> str:
     """
-    Genera el scatter plot Resistencia vs Recuperación con la línea de resiliencia
-    completa (Schwarz et al., 2020; Xu et al., 2024).
+    Generate a Resistance vs Recovery scatter plot with the line of full resilience
+    and an RMA regression.
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -449,7 +437,7 @@ def plot_line_of_full_resilience(
     rc = rc[mask]
 
     if len(rt) < 10:
-        warnings.warn("Menos de 10 píxeles válidos para plot_line_of_full_resilience. Omitido.")
+        warnings.warn("Fewer than 10 valid pixels for plot_line_of_full_resilience. Skipped.")
         return ""
 
     _, _, r_value, p_value, _ = stats.linregress(rt, rc)
@@ -464,34 +452,33 @@ def plot_line_of_full_resilience(
 
     fig, ax = plt.subplots(figsize=(8, 7))
 
-    ax.scatter(rt, rc, alpha=0.3, s=8, color="#546e7a", zorder=2, label="Píxeles")
+    ax.scatter(rt, rc, alpha=0.3, s=8, color="#546e7a", zorder=2, label="Pixels")
 
     ax.plot(rt_range, rc_full_resilience, color="#2c3e50", linewidth=2.0,
-            linestyle="--", zorder=4, label="Resiliencia completa (Rc = −Rt)")
+            linestyle="--", zorder=4, label="Full resilience (Rc = -Rt)")
 
     p_str = "p < 0.001" if p_value < 0.001 else f"p = {p_value:.3f}"
     ax.plot(rt_range, rc_regression, color="#e74c3c", linewidth=2.0,
             linestyle="-", zorder=5,
-            label=f"Regresión RMA\ny = {slope_rma:.2f}x + {intercept_rma:.2f} | R² = {r2:.2f} | {p_str}")
+            label=f"RMA regression\ny = {slope_rma:.2f}x + {intercept_rma:.2f} | R2 = {r2:.2f} | {p_str}")
 
     ax.axline((0, 0), slope=-1, color="#95a5a6", linewidth=0.8,
               linestyle=":", alpha=0.5, zorder=1)
 
-    ax.text(0.02, 0.97, "Rc + Rt > 0\n(Superrecuperación)",
+    ax.text(0.02, 0.97, "Rc + Rt > 0\n(Over-recovery)",
             transform=ax.transAxes, fontsize=8, color="#27ae60",
             verticalalignment="top", alpha=0.7)
-    ax.text(0.98, 0.03, "Rc + Rt < 0\n(Recuperación incompleta)",
+    ax.text(0.98, 0.03, "Rc + Rt < 0\n(Incomplete recovery)",
             transform=ax.transAxes, fontsize=8, color="#c0392b",
             horizontalalignment="right", alpha=0.7)
 
     ax.axhline(0, color="black", linewidth=0.6, alpha=0.3)
     ax.axvline(0, color="black", linewidth=0.6, alpha=0.3)
 
-    ax.set_xlabel("Resistencia — Rt (ΔSNDVI)", fontsize=11)
-    ax.set_ylabel("Recuperación — Rc (ΔSNDVI)", fontsize=11)
+    ax.set_xlabel("Resistance -- Rt (ΔSNDVI)", fontsize=11)
+    ax.set_ylabel("Recovery -- Rc (ΔSNDVI)", fontsize=11)
     ax.set_title(
-        f"Línea de Resiliencia Completa — {area_name}\n"
-        f"(Schwarz et al., 2020; Xu et al., 2024)",
+        f"Line of Full Resilience -- {area_name}",
         fontsize=12, pad=10, weight="bold"
     )
     ax.legend(fontsize=9, framealpha=0.9, loc="upper left")

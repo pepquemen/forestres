@@ -42,12 +42,13 @@ pip install -e .
 
 ---
 
-## Quick Start
+## Usage
+
+### Step 1 — Load and clip data to the study area
 
 ```python
 import drought_impact
 
-# Step 1: Load and clip data to study area
 ds_clip = drought_impact.load_and_merge_datasets(
     drought_path    = "scpdsi.nc",
     vegetation_path = "SNDVI.nc",
@@ -56,19 +57,52 @@ ds_clip = drought_impact.load_and_merge_datasets(
     shapefile_path  = "study_area.shp",
     crs             = "EPSG:23030"
 )
+```
 
-# Step 2: Explore drought events and estimate optimal lag
-events = drought_impact.detect_drought_events(ds_clip, severity_threshold=-2.74)
-lag_df = drought_impact.compute_lag_correlation(ds_clip, plot=True)
+`load_and_merge_datasets` reads both NetCDF files, clips them to the shapefile bounding box before loading into memory, aligns their time axes via nearest-neighbour search, and applies the exact polygon clip. The result is a single `xr.Dataset` with variables `drought_index` and `ndvi`, ready for analysis.
 
-# Step 3: Run the full pipeline
+---
+
+### Step 2 — Explore drought events and estimate the vegetation lag
+
+```python
+# Detect drought events in the historical series
+events = drought_impact.detect_drought_events(
+    ds_clip,
+    severity_threshold = -2.74,   # severe drought threshold (CSIC scPDSI scale)
+    min_duration       = 6,       # minimum 6 biweekly periods (~3 months)
+    pooling_periods    = 4,       # merge runs separated by fewer than 4 positive periods
+    plot               = True,
+    output_path        = "events.png"
+)
+print(events)
+
+# Estimate the optimal vegetation response lag
+lag_df = drought_impact.compute_lag_correlation(
+    ds_clip,
+    max_lag     = 24,             # evaluate lags from 0 to 24 biweekly periods (~12 months)
+    plot        = True,
+    output_path = "lag_correlation.png",
+    index_name  = "scPDSI"
+)
+```
+
+`detect_drought_events` applies Run Theory to the spatial median of the drought index and returns a table of detected events with their start and end dates, duration, peak severity, and accumulated deficit. Use this table to choose which event to analyse and define the four analysis dates.
+
+`compute_lag_correlation` calculates the pixel-wise Pearson correlation between the drought index and SNDVI for lags from 0 to `max_lag` biweekly periods. The optimal lag is the one that maximises the mean correlation across pixels. Use this value as `vegetation_lag_periods` in the pipeline.
+
+---
+
+### Step 3 — Run the full analysis pipeline
+
+```python
 results = drought_impact.run_drought_impact_pipeline(
     dataset                = ds_clip,
-    pre_start              = "1995-06-15",
-    event_start            = "1997-01-15",
-    event_end              = "2001-10-15",
-    post_end               = "2003-03-01",
-    vegetation_lag_periods = 1,
+    pre_start              = "1995-06-15",   # start of pre-drought baseline window
+    event_start            = "1997-01-15",   # start of drought event (from Step 2)
+    event_end              = "2001-10-15",   # end of drought event (from Step 2)
+    post_end               = "2003-03-01",   # end of post-drought recovery window
+    vegetation_lag_periods = 1,              # optimal lag (from Step 2)
     output_dir             = "results/",
     area_name              = "My study area"
 )
@@ -80,11 +114,11 @@ results = drought_impact.run_drought_impact_pipeline(
 
 The library is designed for CSIC drought indices and SNDVI data:
 
-| Variable | Format | Source | Resolution |
-|----------|--------|--------|-----------|
-| scPDSI, SPEI, SPI | NetCDF | [CSIC Monitor de Sequía](https://monitordesequia.csic.es/) | ~1.1 km, biweekly |
+| Variable | Format | Source | Resolution        |
+|----------|--------|--------|-------------------|
+| scPDSI, SPEI, SPI | NetCDF | [CSIC Monitor de Sequía](https://monitordesequia.csic.es/) | ~1.1 km, weekly   |
 | SNDVI | NetCDF | [Franquesa et al. (2025)](https://doi.org/10.1038/s41597-025-04427-7) | ~1.1 km, biweekly |
-| Study area | Shapefile | User-defined | — |
+| Study area | Shapefile | User-defined | —                 |
 
 Both NetCDF files must cover the same spatial extent and have overlapping time periods.
 
@@ -185,7 +219,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 If you use this library in your research, please cite:
 
 ```
-Quetglas, P. (2025). drought_impact: A Python library for ecological drought impact 
+Quevedo Méndez, Josep. (2026). drought_impact: A Python library for ecological drought impact 
 assessment on forest vegetation (v0.1.0). GitHub. 
 https://github.com/pepquemen/drought-impact
 ```

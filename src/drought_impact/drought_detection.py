@@ -5,9 +5,7 @@ import matplotlib.pyplot as plt
 import warnings
 
 
-# =============================================================================
-# FUNCIONES DE APOYO A LA DECISIÓN
-# =============================================================================
+# --- Decision-support functions
 
 def detect_drought_events(
     dataset: xr.Dataset,
@@ -20,57 +18,54 @@ def detect_drought_events(
     output_path: str = None
 ) -> pd.DataFrame:
     """
-    Detecta todos los eventos de sequía en la serie temporal usando la Teoría de
-    Rachas (Yevjevich, 1967) sobre la mediana espacial del índice de sequía.
+    Detect drought events in the time series using Run Theory (Yevjevich, 1967)
+    applied to the spatial median of the drought index.
 
-    Un evento se define como una racha consecutiva de períodos semi-mensuales
-    donde el índice cae por debajo del umbral de inicio (onset_threshold), siempre
-    que en algún momento alcance la severidad mínima (severity_threshold) y tenga
-    una duración mínima (min_duration). Rachas próximas separadas por menos de
-    pooling_periods períodos positivos se fusionan en un único evento.
+    An event is defined as a consecutive run of semi-monthly periods where the
+    index falls below onset_threshold, provided it reaches severity_threshold at
+    some point and meets the minimum duration. Runs separated by fewer than
+    pooling_periods positive periods are merged into a single event.
 
-    NOTA: Los datos del CSIC tienen resolución semi-mensual (quincenas).
-    Todos los parámetros temporales se expresan en número de quincenas.
-    1 mes ≈ 2 quincenas.
+    All temporal parameters are expressed in biweekly periods (1 month ~ 2 periods).
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     dataset : xr.Dataset
-        Dataset recortado al área de estudio (salida de clip_dataset_to_polygon).
+        Dataset clipped to the study area (output of clip_dataset_to_polygon).
     index_var : str
-        Nombre de la variable del índice de sequía (ej. 'drought_index').
+        Name of the drought index variable (e.g. 'drought_index').
     onset_threshold : float
-        Umbral de inicio de racha. El índice debe caer por debajo de este valor
-        para que empiece a contabilizarse como período de déficit (por defecto 0.0).
+        Run onset threshold. The index must fall below this value to start
+        accumulating a deficit run (default 0.0).
     severity_threshold : float
-        Severidad mínima que debe alcanzar el evento en algún momento para
-        considerarse sequía real (por defecto -1.5, sequía severa).
+        Minimum severity the event must reach at some point to qualify as a
+        real drought (default -1.5, severe drought).
     min_duration : int
-        Número mínimo de quincenas consecutivas para considerar un evento válido
-        (por defecto 6, equivalente a ~3 meses).
+        Minimum number of consecutive biweekly periods for a valid event
+        (default 6, approximately 3 months).
     pooling_periods : int
-        Número máximo de quincenas positivas entre dos rachas para fusionarlas
-        en un único evento (por defecto 4, equivalente a ~2 meses).
+        Maximum number of positive periods between two runs for them to be
+        merged into one event (default 4, approximately 2 months).
     plot : bool
-        Si True, genera un gráfico de la serie temporal con los eventos sombreados.
-    output_path : str, opcional
-        Ruta donde guardar el gráfico. Si None, se muestra en pantalla.
+        If True, generate a time-series plot with events shaded.
+    output_path : str, optional
+        Path to save the plot. If None, the plot is displayed on screen.
 
-    Retorna:
-    --------
-    pd.DataFrame con columnas:
-        event_id, start_date, end_date, duration_periods, duration_months,
-        max_severity, accumulated_deficit
+    Returns
+    -------
+    pd.DataFrame
+        Columns: event_id, start_date, end_date, duration_periods,
+        duration_months, max_severity, accumulated_deficit.
     """
-    # 1. Calcular la mediana espacial del índice
+    # Compute the spatial median of the index
     spatial_median = dataset[index_var].median(dim=["x", "y"])
     times  = pd.to_datetime(spatial_median.time.values)
     values = spatial_median.values
 
-    # 2. Identificar períodos bajo el umbral de inicio
+    # Identify periods below the onset threshold
     below_onset = values < onset_threshold
 
-    # 3. Identificar rachas consecutivas bajo el umbral
+    # Identify consecutive runs below the threshold
     events_raw = []
     i = 0
     while i < len(values):
@@ -83,7 +78,7 @@ def detect_drought_events(
         else:
             i += 1
 
-    # 4. Pooling procedure: fusionar rachas separadas por menos de pooling_periods
+    # Pooling: merge runs separated by fewer than pooling_periods positive periods
     if len(events_raw) > 1:
         merged = [events_raw[0]]
         for current in events_raw[1:]:
@@ -95,7 +90,7 @@ def detect_drought_events(
                 merged.append(current)
         events_raw = merged
 
-    # 5. Filtrar eventos por severidad mínima y duración mínima
+    # Filter events by minimum severity and minimum duration
     events_list = []
     event_id = 1
 
@@ -121,12 +116,12 @@ def detect_drought_events(
 
     if events_df.empty:
         warnings.warn(
-            "No se detectaron eventos de sequía con los parámetros proporcionados. "
-            "Considera reducir severity_threshold o min_duration."
+            "No drought events detected with the given parameters. "
+            "Consider reducing severity_threshold or min_duration."
         )
         return events_df
 
-    # 6. Gráfico de la serie temporal con eventos sombreados
+    # Plot the time series with events shaded
     if plot:
         fig, ax = plt.subplots(figsize=(16, 5))
 
@@ -150,17 +145,15 @@ def detect_drought_events(
                     ha="center", fontsize=8, color="#c0392b", weight="bold")
 
         ax.axhline(onset_threshold,    color="#7f8c8d", linewidth=0.8,
-                   linestyle="--", alpha=0.6, label=f"Umbral inicio ({onset_threshold})")
+                   linestyle="--", alpha=0.6, label=f"Onset threshold ({onset_threshold})")
         ax.axhline(severity_threshold, color="#962d2d", linewidth=0.8,
-                   linestyle="-.", alpha=0.8, label=f"Umbral severidad ({severity_threshold})")
+                   linestyle="-.", alpha=0.8, label=f"Severity threshold ({severity_threshold})")
         ax.axhline(0, color="black", linewidth=0.6, alpha=0.4)
 
-        ax.set_xlabel("Fecha", fontsize=11)
+        ax.set_xlabel("Date", fontsize=11)
         ax.set_ylabel(index_var, fontsize=11)
         ax.set_title(
-            f"Detección de eventos de sequía — Teoría de Rachas (Yevjevich, 1967)\n"
-            f"{len(events_df)} eventos detectados | "
-            f"Severidad mín.: {severity_threshold} | Duración mín.: {min_duration} quincenas",
+            f"Detected Drought Events -- {len(events_df)} events",
             fontsize=12
         )
         ax.legend(fontsize=9, framealpha=0.9)
@@ -177,9 +170,7 @@ def detect_drought_events(
     return events_df
 
 
-# =============================================================================
-# FUNCIÓN DE APOYO: CORRELACIÓN LAG
-# =============================================================================
+# --- Lag correlation
 
 def compute_lag_correlation(
     dataset: xr.Dataset,
@@ -190,52 +181,50 @@ def compute_lag_correlation(
     drought_threshold: float = 0.0,
     plot: bool = False,
     output_path: str = None,
-    index_name: str = "Índice de Sequía"
+    index_name: str = "Drought Index"
 ) -> pd.DataFrame:
     """
-    Calcula la correlación de Pearson entre el índice de sequía y el SNDVI
-    para diferentes lags temporales, usando medianas espaciales sobre toda
-    la serie histórica disponible.
+    Compute pixel-wise Pearson correlation between the drought index and SNDVI
+    for a range of temporal lags using spatial medians over the full historical series.
 
-    Usar este resultado para seleccionar el vegetation_lag_periods óptimo
-    antes de ejecutar el pipeline principal.
+    Use the result to select the optimal vegetation_lag_periods before running
+    the main pipeline.
 
-    NOTA: Los lags se expresan en quincenas (períodos semi-mensuales).
-    Lag=4 equivale aproximadamente a 2 meses.
+    Lags are expressed in biweekly periods. Lag=4 is approximately 2 months.
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     dataset : xr.Dataset
-        Dataset recortado al área de estudio.
+        Dataset clipped to the study area.
     index_var : str
-        Nombre de la variable del índice de sequía.
+        Name of the drought index variable.
     veg_var : str
-        Nombre de la variable de vegetación.
+        Name of the vegetation variable.
     max_lag : int
-        Número máximo de quincenas de lag a calcular (por defecto 24, ~12 meses).
-    plot : bool
-        Si True, genera un gráfico de barras con la correlación por lag.
-        Por defecto False.
-    output_path : str, opcional
-        Ruta donde guardar el gráfico. Si None y plot=True, se muestra en pantalla.
-    index_name : str
-        Nombre del índice de sequía para el título del gráfico.
+        Maximum lag in biweekly periods to evaluate (default 24, ~12 months).
     only_drought_periods : bool
-        Si True, calcula la correlación solo sobre períodos donde el índice
-        está por debajo de drought_threshold. Útil para capturar el lag
-        específico durante condiciones de estrés hídrico.
+        If True, compute correlation only over periods where the index is below
+        drought_threshold. Useful for capturing the lag specific to water-stress
+        conditions.
     drought_threshold : float
-        Umbral del índice para filtrar períodos de estrés cuando
-        only_drought_periods=True (por defecto 0.0).
+        Index threshold for filtering stress periods when only_drought_periods
+        is True (default 0.0).
+    plot : bool
+        If True, generate a bar chart of correlation by lag.
+    output_path : str, optional
+        Path to save the plot. If None and plot=True, the plot is displayed.
+    index_name : str
+        Drought index name for the plot title.
 
-    Retorna:
-    --------
-    pd.DataFrame con columnas: lag_periods, lag_months, correlation
-    Imprime el lag óptimo recomendado.
+    Returns
+    -------
+    pd.DataFrame
+        Columns: lag_periods, lag_months, correlation.
+        Also prints the recommended optimal lag.
     """
-    # Correlación píxel a píxel vectorizada sobre toda la serie histórica.
-    # Se calcula para cada píxel del área de estudio y se reporta la media,
-    # evitando el sesgo de la mediana espacial en áreas heterogéneas.
+    # Pixel-wise vectorised correlation over the full historical series.
+    # Computed per pixel across the study area and reported as the mean,
+    # avoiding the bias of the spatial median in heterogeneous areas.
     index_arr = dataset[index_var].values   # (time, y, x)
     veg_arr   = dataset[veg_var].values     # (time, y, x)
 
@@ -248,7 +237,7 @@ def compute_lag_correlation(
             idx = index_arr[:-lag]
             veg = veg_arr[lag:]
 
-        # Filtrar solo períodos de estrés hídrico si se solicita
+        # Filter to drought stress periods if requested
         if only_drought_periods:
             drought_mask = idx.mean(axis=(1, 2)) < drought_threshold
             idx = idx[drought_mask]
@@ -259,7 +248,7 @@ def compute_lag_correlation(
             records.append({"lag_periods": lag, "lag_months": round(lag / 2, 1), "correlation": np.nan})
             continue
 
-        # Aplanar a (time, pixels) para vectorizar la correlación
+        # Flatten to (time, pixels) to vectorise correlation
         idx_flat = idx.reshape(n_t, -1)
         veg_flat = veg.reshape(n_t, -1)
 
@@ -285,14 +274,14 @@ def compute_lag_correlation(
     corr_df = pd.DataFrame(records)
 
     best_lag = corr_df.loc[corr_df["correlation"].idxmax()]
-    mode_str = "solo períodos de estrés hídrico" if only_drought_periods else "serie histórica completa"
-    print(f"\nCorrelación por lag (píxel a píxel — {mode_str}):")
+    mode_str = "drought periods only" if only_drought_periods else "full historical series"
+    print(f"\nLag correlation (pixel-wise -- {mode_str}):")
     print(corr_df.to_string(index=False))
     print(
-        f"\nLag óptimo recomendado: {int(best_lag['lag_periods'])} quincenas "
-        f"(~{best_lag['lag_months']} meses) — correlación media: {best_lag['correlation']:.4f}"
+        f"\nRecommended optimal lag: {int(best_lag['lag_periods'])} biweekly periods "
+        f"(~{best_lag['lag_months']} months) -- mean correlation: {best_lag['correlation']:.4f}"
     )
-    print("Usa este valor como vegetation_lag_periods en run_drought_impact_pipeline().")
+    print("Use this value as vegetation_lag_periods in run_drought_impact_pipeline().")
 
     if plot:
         import os
@@ -326,24 +315,22 @@ def compute_lag_correlation(
 
         ax.set_xticks(corr_df["lag_periods"])
         ax.set_xticklabels(
-            [f"Lag {int(r['lag_periods'])}\n(~{r['lag_months']} m)"
+            [f"Lag {int(r['lag_periods'])}\n(~{r['lag_months']} mo)"
              for _, r in corr_df.iterrows()],
             fontsize=8
         )
-        ax.set_xlabel("Lag temporal (quincenas)", fontsize=11)
-        ax.set_ylabel("Correlación de Pearson media (píxel a píxel)", fontsize=11)
+        ax.set_xlabel("Lag (biweekly periods)", fontsize=11)
+        ax.set_ylabel("Mean Pearson correlation (pixel-wise)", fontsize=11)
         ax.set_title(
-            f"Correlación {index_name} — SNDVI por lag temporal\n"
-            f"Lag óptimo: {int(best_lag['lag_periods'])} quincenas "
-            f"(~{best_lag['lag_months']} meses) | r = {best_lag['correlation']:.4f}",
+            f"Lag Correlation -- {index_name} vs SNDVI",
             fontsize=12, pad=10
         )
         ax.set_ylim(0, corr_df["correlation"].max() * 1.12)
         ax.grid(axis="y", linestyle=":", alpha=0.4)
 
         legend_elements = [
-            Patch(facecolor="#e74c3c", label=f"Lag óptimo ({int(best_lag['lag_periods'])} quincenas)"),
-            Patch(facecolor="#546e7a", label="Otros lags")
+            Patch(facecolor="#e74c3c", label=f"Optimal lag ({int(best_lag['lag_periods'])} periods)"),
+            Patch(facecolor="#546e7a", label="Other lags")
         ]
         ax.legend(handles=legend_elements, fontsize=9, framealpha=0.9)
 
@@ -359,11 +346,7 @@ def compute_lag_correlation(
     return corr_df
 
 
-
-
-# =============================================================================
-# FUNCIÓN DE VENTANAS (uso interno del pipeline)
-# =============================================================================
+# --- Temporal windows (used internally by the pipeline)
 
 def get_analysis_windows(
     dataset: xr.Dataset,
@@ -374,59 +357,57 @@ def get_analysis_windows(
     vegetation_lag_periods: int = 4
 ) -> dict:
     """
-    Construye las ventanas temporales Pre, During y Post a partir de las fechas
-    definidas por el usuario, aplicando el lag de vegetación a todas las ventanas
-    del SNDVI desplazándolas hacia adelante.
+    Build Pre, During, and Post temporal windows from user-defined dates, applying
+    the vegetation lag by shifting all SNDVI windows forward.
 
-    El usuario define las cuatro fechas límite manualmente, idealmente tras
-    consultar detect_drought_events() y compute_lag_correlation().
+    The user defines the four boundary dates manually, ideally after consulting
+    detect_drought_events() and compute_lag_correlation().
 
-    El lag desplaza todas las ventanas del SNDVI hacia adelante porque la
-    vegetación responde al estrés hídrico con un retardo temporal. Esto garantiza
-    que el Pre, During y Post del SNDVI corresponden al estado real de la
-    vegetación en cada fase, no al estado del clima.
+    The lag shifts all SNDVI windows forward because vegetation responds to water
+    stress with a temporal delay. This ensures that the Pre, During, and Post SNDVI
+    windows reflect the actual vegetation state in each phase.
 
-    NOTA: vegetation_lag_periods se expresa en quincenas.
-    Lag=4 equivale aproximadamente a 2 meses.
+    vegetation_lag_periods is expressed in biweekly periods. Lag=4 ~ 2 months.
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     dataset : xr.Dataset
-        Dataset recortado, necesario para validar que las fechas desplazadas
-        existen en el rango temporal disponible.
+        Clipped dataset, used to validate that shifted dates exist in the
+        available time range.
     pre_start : str
-        Inicio de la ventana Pre-sequía (ej. '1997-06-01').
+        Start of the pre-drought window (e.g. '1997-06-01').
     event_start : str
-        Inicio del evento de sequía (ej. '1999-06-01').
+        Start of the drought event (e.g. '1999-06-01').
     event_end : str
-        Fin del evento de sequía (ej. '2002-03-15').
+        End of the drought event (e.g. '2002-03-15').
     post_end : str
-        Fin de la ventana Post-sequía (ej. '2004-03-15').
+        End of the post-drought window (e.g. '2004-03-15').
     vegetation_lag_periods : int
-        Número de quincenas a desplazar todas las ventanas del SNDVI hacia
-        adelante (por defecto 4, ~2 meses).
+        Number of biweekly periods to shift all SNDVI windows forward
+        (default 4, ~2 months).
 
-    Retorna:
-    --------
-    dict con dos subdicts:
-        'index':      slices para el índice de sequía (sin lag)
-        'vegetation': slices para el SNDVI (todas las ventanas desplazadas)
+    Returns
+    -------
+    dict
+        Two sub-dicts:
+            'index':      slices for the drought index (no lag)
+            'vegetation': slices for SNDVI (all windows shifted)
     """
     pre_start_dt   = pd.to_datetime(pre_start)
     event_start_dt = pd.to_datetime(event_start)
     event_end_dt   = pd.to_datetime(event_end)
     post_end_dt    = pd.to_datetime(post_end)
 
-    # Ventanas del índice de sequía sin lag
+    # Drought index windows without lag
     index_windows = {
         "pre_drought":    slice(str(pre_start_dt.date()),   str(event_start_dt.date())),
         "during_drought": slice(str(event_start_dt.date()), str(event_end_dt.date())),
         "post_drought":   slice(str(event_end_dt.date()),   str(post_end_dt.date()))
     }
 
-    # Desplazamiento del lag con corrección de calendario
-    # Usar days=15*N produce desvíos acumulativos en meses con distinto número de días.
-    # La solución correcta es usar meses completos + días extra para quincenas impares.
+    # Lag offset with calendar correction.
+    # Using days=15*N accumulates drift in months with different day counts.
+    # Correct approach: full months + extra days for odd biweekly periods.
     months_offset = vegetation_lag_periods // 2
     extra_days    = 15 if vegetation_lag_periods % 2 != 0 else 0
     lag_offset    = pd.DateOffset(months=months_offset, days=extra_days)
@@ -436,17 +417,17 @@ def get_analysis_windows(
     veg_event_end    = event_end_dt   + lag_offset
     veg_post_end     = post_end_dt    + lag_offset
 
-    # Validar que el Post del SNDVI no excede el dataset
+    # Warn if the lagged Post window exceeds the dataset
     data_end = pd.to_datetime(dataset.time.values[-1])
     if veg_post_end > data_end:
         warnings.warn(
-            f"La ventana Post del SNDVI termina en {veg_post_end.date()} "
-            f"pero el dataset termina en {data_end.date()}. "
-            f"La recuperación puede estar incompleta. "
-            f"Considera reducir post_end o vegetation_lag_periods."
+            f"The SNDVI Post window ends on {veg_post_end.date()} "
+            f"but the dataset ends on {data_end.date()}. "
+            f"Recovery may be incomplete. "
+            f"Consider reducing post_end or vegetation_lag_periods."
         )
 
-    # Ventanas del SNDVI con lag aplicado a todas
+    # SNDVI windows with lag applied to all
     vegetation_windows = {
         "pre_drought":    slice(str(veg_pre_start.date()),   str(veg_event_start.date())),
         "during_drought": slice(str(veg_event_start.date()), str(veg_event_end.date())),

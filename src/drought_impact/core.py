@@ -39,104 +39,99 @@ def run_drought_impact_pipeline(
         kernel_size: int = 3,
         min_valid_neighbors: int = 3,
         clustering_target_var: str = "accumulated_deficit",
-        area_name: str = "Área de estudio"
+        area_name: str = "Study area"
 ) -> dict:
     """
-    Orquestador central del pipeline de evaluación de impacto ecológico por sequía.
+    Central orchestrator for the drought ecological impact assessment pipeline.
 
-    Recibe el dataset ya cargado y recortado, y las fechas definidas manualmente
-    por el usuario tras consultar las funciones de apoyo detect_drought_events()
-    y compute_lag_correlation().
+    Receives the already-loaded and clipped dataset and the dates defined manually
+    by the user after consulting detect_drought_events() and compute_lag_correlation().
 
-    FLUJO DE TRABAJO RECOMENDADO:
-    ------------------------------
-    1. Cargar y recortar datos (un solo paso, el shapefile dispara el recorte):
-        ds_clip = load_and_merge_datasets(
-            drought_path    = "scpdsi.nc",
-            vegetation_path = "SNDVI.nc",
-            drought_var     = "value",
-            vegetation_var  = "SNDVI",
-            shapefile_path  = "mi_area.shp",
-            crs             = "EPSG:23030"
-        )
+    Recommended workflow:
+        1. Load and clip data (one step; the shapefile triggers the clip):
+            ds_clip = load_and_merge_datasets(
+                drought_path    = "scpdsi.nc",
+                vegetation_path = "SNDVI.nc",
+                drought_var     = "value",
+                vegetation_var  = "SNDVI",
+                shapefile_path  = "study_area.shp",
+                crs             = "EPSG:23030"
+            )
 
-    2. Explorar eventos y lag (funciones de apoyo):
-        events = detect_drought_events(ds_clip)
-        lag_df = compute_lag_correlation(ds_clip)
+        2. Explore events and lag (decision-support functions):
+            events = detect_drought_events(ds_clip)
+            lag_df = compute_lag_correlation(ds_clip)
 
-    3. Ejecutar el pipeline con las fechas elegidas:
-        results = run_drought_impact_pipeline(
-            dataset                = ds_clip,
-            pre_start              = "1995-06-15",
-            event_start            = "1997-01-15",
-            event_end              = "2001-10-15",
-            post_end               = "2003-03-01",
-            vegetation_lag_periods = 2,
-            min_recovery_periods   = 4,
-            output_dir             = "resultados/",
-            area_name              = "Serra de Tramuntana"
-        )
+        3. Run the pipeline with the chosen dates:
+            results = run_drought_impact_pipeline(
+                dataset                = ds_clip,
+                pre_start              = "1995-06-15",
+                event_start            = "1997-01-15",
+                event_end              = "2001-10-15",
+                post_end               = "2003-03-01",
+                vegetation_lag_periods = 2,
+                min_recovery_periods   = 4,
+                output_dir             = "results/",
+                area_name              = "Serra de Tramuntana"
+            )
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     dataset : xr.Dataset
-        Dataset recortado al área de estudio (salida de load_and_merge_datasets).
+        Dataset clipped to the study area (output of load_and_merge_datasets).
     pre_start : str
-        Inicio de la ventana Pre-sequía. Debe corresponder a un período de
-        condiciones hídricas favorables según la Run Theory (índice > 0).
+        Start of the pre-drought window. Should correspond to a period of
+        favourable hydric conditions (index > 0) per Run Theory.
     event_start : str
-        Inicio del evento de sequía.
+        Start of the drought event.
     event_end : str
-        Fin del evento de sequía.
+        End of the drought event.
     post_end : str
-        Fin de la ventana Post-sequía. Debe corresponder a condiciones favorables.
+        End of the post-drought window. Should correspond to favourable conditions.
     output_dir : str
-        Directorio raíz de salida para todos los entregables.
+        Root output directory for all deliverables.
     drought_index_var : str
-        Nombre interno de la variable del índice de sequía.
+        Internal name of the drought index variable.
     veg_var : str
-        Nombre interno de la variable de vegetación.
+        Internal name of the vegetation variable.
     vegetation_lag_periods : int
-        Quincenas de lag de respuesta de la vegetación al estrés hídrico.
-        Usar compute_lag_correlation() para estimar el valor óptimo.
-        Por defecto 2 (~1 mes), basado en análisis de correlaciones con scPDSI.
+        Vegetation response lag in biweekly periods. Use compute_lag_correlation()
+        to estimate the optimal value. Default 2 (~1 month).
     exposure_threshold : float
-        Umbral del índice para filtrar píxeles no expuestos a la sequía.
-        Píxeles con mediana del índice >= este valor quedan como NaN. Default 0.0.
+        Index threshold to exclude pixels not exposed to drought. Pixels with a
+        median index >= this value are set to NaN. Default 0.0.
     agg_method : str
-        Método de agregación temporal de cada ventana por píxel.
-        'median' recomendado por robustez ante outliers (por defecto).
+        Temporal aggregation method per pixel per window. 'median' recommended
+        for robustness to outliers (default).
     min_recovery_periods : int
-        Quincenas consecutivas por encima de anomalía 0 para confirmar recuperación.
-        Evita que rebotes puntuales sean contabilizados como recuperación real.
-        Por defecto 4 (~2 meses). Ajustar según tipo de vegetación del área.
+        Consecutive biweekly periods above anomaly 0 required to confirm recovery.
+        Prevents transient rebounds from being counted as real recovery.
+        Default 4 (~2 months). Adjust according to the vegetation type.
     kernel_size : int
-        Tamaño del kernel para el análisis Gi* (debe ser impar: 3, 5, 7).
-        Con resolución CSIC de 1.1 km: 3x3 ~10 km², 5x5 ~30 km², 7x7 ~60 km².
+        Kernel size for the Gi* analysis (must be odd: 3, 5, 7).
+        At 1.1 km CSIC resolution: 3x3 ~10 km2, 5x5 ~30 km2, 7x7 ~60 km2.
     min_valid_neighbors : int
-        Mínimo de vecinos válidos para el análisis Getis-Ord Gi*.
+        Minimum valid neighbours for the Getis-Ord Gi* analysis.
     clustering_target_var : str
-        Variable del Dataset de métricas sobre la que aplicar el Gi*.
-        Por defecto 'accumulated_deficit'. Otras opciones útiles:
-        'recovery_time' (hotspots de lenta recuperación),
-        'resistance' (núcleos de colapso estructural).
+        Metric variable on which to apply Gi*. Default 'accumulated_deficit'.
+        Other useful options: 'recovery_time' (slow-recovery hotspots),
+        'resistance' (structural collapse cores).
     area_name : str
-        Nombre del área de estudio para títulos de figuras.
+        Study area name for figure titles.
 
-    Retorna:
-    --------
-    dict con rutas a todos los entregables generados:
+    Returns
+    -------
+    dict
+        Paths to all generated deliverables:
         windows, metrics_tifs, statistics_csv, hotspots_tif,
-        plot_timeseries, plot_panel, plot_hotspots,
-        plot_histograms, plot_resilience
+        plot_timeseries, plot_individual, plot_hotspots,
+        plot_histograms, plot_resilience.
     """
     os.makedirs(output_dir, exist_ok=True)
     results = {}
 
-    # =========================================================================
-    # PASO 1: Validación de fechas y ventanas temporales
-    # =========================================================================
-    logger.info("[1/4] Validando fechas y construyendo ventanas temporales...")
+    # --- Step 1: Date validation and temporal windows
+    logger.info("[1/4] Validating dates and building temporal windows...")
 
     data_start = pd.to_datetime(dataset.time.values[0])
     data_end   = pd.to_datetime(dataset.time.values[-1])
@@ -147,30 +142,30 @@ def run_drought_impact_pipeline(
     post_end_dt    = pd.to_datetime(post_end)
 
     if pre_start_dt >= event_start_dt:
-        raise ValueError(f"pre_start ({pre_start}) debe ser anterior a event_start ({event_start}).")
+        raise ValueError(f"pre_start ({pre_start}) must be earlier than event_start ({event_start}).")
     if event_start_dt >= event_end_dt:
-        raise ValueError(f"event_start ({event_start}) debe ser anterior a event_end ({event_end}).")
+        raise ValueError(f"event_start ({event_start}) must be earlier than event_end ({event_end}).")
     if event_end_dt >= post_end_dt:
-        raise ValueError(f"event_end ({event_end}) debe ser anterior a post_end ({post_end}).")
+        raise ValueError(f"event_end ({event_end}) must be earlier than post_end ({post_end}).")
 
     if pre_start_dt < data_start:
         warnings.warn(
-            f"pre_start ({pre_start}) es anterior al inicio del dataset ({data_start.date()}). "
-            "La ventana Pre puede estar incompleta."
+            f"pre_start ({pre_start}) is earlier than the dataset start ({data_start.date()}). "
+            "The Pre window may be incomplete."
         )
 
-    # Corrección calendar drift: misma fórmula que get_analysis_windows
+    # Calendar-drift correction: same formula as get_analysis_windows
     months_offset = vegetation_lag_periods // 2
     extra_days    = 15 if vegetation_lag_periods % 2 != 0 else 0
     lag_offset    = pd.DateOffset(months=months_offset, days=extra_days)
     veg_post_end  = post_end_dt + lag_offset
     if veg_post_end > data_end:
         raise ValueError(
-            f"La ventana Post del SNDVI (con lag aplicado) termina en {veg_post_end.date()} "
-            f"pero el dataset finaliza en {data_end.date()}. "
-            f"Las métricas de recuperación se calcularían sobre datos incompletos. "
-            f"Reduce 'post_end' o 'vegetation_lag_periods' para que la ventana "
-            f"no exceda {data_end.date()}."
+            f"The SNDVI Post window (with lag applied) ends on {veg_post_end.date()} "
+            f"but the dataset ends on {data_end.date()}. "
+            f"Recovery metrics would be computed on incomplete data. "
+            f"Reduce 'post_end' or 'vegetation_lag_periods' so the window "
+            f"does not exceed {data_end.date()}."
         )
 
     windows = get_analysis_windows(
@@ -182,15 +177,13 @@ def run_drought_impact_pipeline(
         vegetation_lag_periods = vegetation_lag_periods
     )
     results["windows"] = windows
-    logger.info(f"Lag aplicado: {vegetation_lag_periods} quincenas (~{vegetation_lag_periods/2:.1f} meses)")
-    logger.info(f"Ventana Pre índice:  {pre_start} → {event_start}")
-    logger.info(f"Ventana Dur índice:  {event_start} → {event_end}")
-    logger.info(f"Ventana Post índice: {event_end} → {post_end}")
+    logger.info(f"Lag applied: {vegetation_lag_periods} biweekly periods (~{vegetation_lag_periods/2:.1f} months)")
+    logger.info(f"Pre index window:    {pre_start} to {event_start}")
+    logger.info(f"During index window: {event_start} to {event_end}")
+    logger.info(f"Post index window:   {event_end} to {post_end}")
 
-    # =========================================================================
-    # PASO 2: Métricas de impacto ecológico
-    # =========================================================================
-    logger.info("[2/4] Calculando métricas de impacto ecológico (Lloret et al., 2011)...")
+    # --- Step 2: Ecological impact metrics
+    logger.info("[2/4] Computing ecological impact metrics (Lloret et al., 2011)...")
 
     metrics_ds = vegetation_impact_metrics(
         dataset               = dataset,
@@ -209,34 +202,32 @@ def run_drought_impact_pipeline(
     results["statistics_csv"] = csv_stats
     results["metrics_gpkg"]   = gpkg_path
 
-    # =========================================================================
-    # PASO 3: Análisis espacial Getis-Ord Gi*
-    # =========================================================================
+    # --- Step 3: Getis-Ord Gi* spatial analysis
     if clustering_target_var not in metrics_ds.data_vars:
         raise KeyError(
-            f"La variable '{clustering_target_var}' no existe en las métricas. "
-            f"Variables disponibles: {list(metrics_ds.data_vars)}"
+            f"Variable '{clustering_target_var}' not found in metrics. "
+            f"Available variables: {list(metrics_ds.data_vars)}"
         )
 
-    # Métricas donde valores más negativos = mayor vulnerabilidad → invertir signo
-    # para que el Gi* detecte esas zonas como Hotspots (valores altos) en lugar de Coldspots.
+    # For metrics where more negative = higher vulnerability, invert the sign so that
+    # Gi* detects those zones as Hotspots (high values) rather than Coldspots.
     _INVERT_FOR_HOTSPOT = {
-        "accumulated_deficit": True,   # más negativo = más déficit acumulado
-        "resistance":          True,   # más negativo = mayor daño durante la sequía
-        "resilience":          True,   # más negativo = peor balance final
-        "drought_min":         True,   # más negativo = pico de sequía más severo
-        "drought_median":      True,   # más negativo = intensidad típica más severa
-        "recovery_time":       False,  # más alto = más lento en recuperarse
-        "recovery":            False,  # más alto = mejor recuperación
-        "did_not_recover":     False,  # 1 = no recuperado = vulnerable
+        "accumulated_deficit": True,   # more negative = greater accumulated deficit
+        "resistance":          True,   # more negative = greater damage during drought
+        "resilience":          True,   # more negative = worse final balance
+        "drought_min":         True,   # more negative = more severe drought peak
+        "drought_median":      True,   # more negative = more severe typical intensity
+        "recovery_time":       False,  # higher = slower recovery
+        "recovery":            False,  # higher = better recovery
+        "did_not_recover":     False,  # 1 = not recovered = vulnerable
     }
 
     target_da = metrics_ds[clustering_target_var]
     if _INVERT_FOR_HOTSPOT.get(clustering_target_var, False):
         target_da = -target_da
-        logger.info(f"Signo invertido para '{clustering_target_var}': valores más negativos → Hotspots.")
+        logger.info(f"Sign inverted for '{clustering_target_var}': more negative values will appear as Hotspots.")
 
-    logger.info(f"[3/4] Ejecutando análisis Getis-Ord Gi* sobre '{clustering_target_var}'...")
+    logger.info(f"[3/4] Running Getis-Ord Gi* on '{clustering_target_var}'...")
 
     clustering_ds = calculate_getis_ord_gi_star(
         target_da,
@@ -249,10 +240,8 @@ def run_drought_impact_pipeline(
     )
     results["hotspots_tif"] = tif_hotspots
 
-    # =========================================================================
-    # PASO 4: Figuras y cartografía
-    # =========================================================================
-    logger.info("[4/4] Generando figuras y cartografía...")
+    # --- Step 4: Figures and cartography
+    logger.info("[4/4] Generating figures and cartography...")
 
     results["plot_timeseries"] = plot_drought_timeseries(
         dataset[drought_index_var], windows, output_dir,
@@ -265,5 +254,5 @@ def run_drought_impact_pipeline(
         metrics_ds, output_dir, area_name=area_name
     )
 
-    logger.info(f"¡Pipeline completado! Entregables en: {output_dir}")
+    logger.info(f"Pipeline complete. Deliverables in: {output_dir}")
     return results

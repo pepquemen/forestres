@@ -4,19 +4,20 @@ import numpy as np
 
 def aggregate_temporal_window(da: xr.DataArray, method: str = "median") -> xr.DataArray:
     """
-    Colapsa la dimensión temporal de una ventana de datos en un único valor escalar por píxel.
+    Collapse the time dimension of a data window into a single scalar per pixel.
 
-    Parámetros:
-    -----------
+    Parameters
+    ----------
     da : xr.DataArray
-        Array con dimensión temporal.
+        Array with a time dimension.
     method : str
-        Método de agregación: 'median' (recomendado para datos ecológicos por su
-        robustez ante outliers), 'mean' o 'max'.
+        Aggregation method: 'median' (recommended for ecological data due to
+        robustness to outliers), 'mean', or 'max'.
 
-    Retorna:
-    --------
-    xr.DataArray 2D (y, x) con el valor agregado por píxel.
+    Returns
+    -------
+    xr.DataArray
+        2D array (y, x) with the aggregated value per pixel.
     """
     if method == "median":
         return da.median(dim="time", skipna=True)
@@ -25,7 +26,7 @@ def aggregate_temporal_window(da: xr.DataArray, method: str = "median") -> xr.Da
     elif method == "max":
         return da.max(dim="time", skipna=True)
     else:
-        raise ValueError(f"Método '{method}' no soportado. Usa 'median', 'mean' o 'max'.")
+        raise ValueError(f"Method '{method}' is not supported. Use 'median', 'mean', or 'max'.")
 
 
 def vegetation_impact_metrics(
@@ -38,110 +39,93 @@ def vegetation_impact_metrics(
     min_recovery_periods: int = 4
 ) -> xr.Dataset:
     """
-    Calcula las métricas de vulnerabilidad y resiliencia del bosque frente a la sequía.
+    Compute vegetation vulnerability and resilience metrics for a drought event.
 
-    Implementa las métricas de Lloret et al. (2011) adaptadas al uso de diferencias
-    en lugar de ratios para evitar el efecto de valores positivos y negativos derivados
-    del uso de un índice estandarizado como el SNDVI (Xu et al., 2024).
-    Incluye además el Déficit Acumulado, el Tiempo de Recuperación sostenida y una
-    máscara de exposición que excluye los píxeles que no sufrieron estrés hídrico real.
+    Implements the Lloret et al. (2011) metrics adapted to use absolute differences
+    instead of ratios, avoiding sign instability when working with a standardised
+    index such as SNDVI (Xu et al., 2024). Also includes Accumulated Deficit,
+    sustained Recovery Time, and an exposure mask that excludes pixels with no
+    real water stress.
 
-    Las ventanas temporales del SNDVI están desplazadas respecto a las del índice
-    de sequía para compensar el lag de respuesta de la vegetación. Las ventanas
-    del índice se usan exclusivamente para calcular la máscara de exposición.
+    SNDVI windows are shifted relative to the drought index windows to compensate
+    for the vegetation lag. Index windows are used exclusively to compute the
+    exposure mask.
 
-    Parámetros:
-    -----------
+    Accumulated deficit and recovery time are referenced to SNDVI anomaly 0
+    (historical normal conditions) rather than the Pre period value, removing
+    dependence on the choice of temporal windows.
+
+    Parameters
+    ----------
     dataset : xr.Dataset
-        Dataset recortado al área de estudio con variables de vegetación e índice.
+        Dataset clipped to the study area, containing both vegetation and index
+        variables.
     veg_var : str
-        Nombre de la variable de vegetación (ej. 'ndvi').
+        Name of the vegetation variable (e.g. 'ndvi').
     index_var : str
-        Nombre de la variable del índice de sequía (ej. 'drought_index').
+        Name of the drought index variable (e.g. 'drought_index').
     windows : dict
-        Diccionario con dos subdicts devuelto por get_analysis_windows():
-            'index':      ventanas temporales del índice de sequía (sin lag)
-            'vegetation': ventanas temporales del SNDVI (con lag aplicado)
+        Dict with two sub-dicts returned by get_analysis_windows():
+            'index':      drought index temporal windows (no lag)
+            'vegetation': SNDVI temporal windows (lag applied)
     exposure_threshold : float
-        Umbral del índice para considerar un píxel como expuesto a sequía.
-        Píxeles donde el mínimo del índice durante el evento es >= este valor
-        se excluyen del análisis (NaN). Por defecto 0.0.
+        Index threshold to classify a pixel as exposed to drought. Pixels where
+        the minimum index during the event is >= this value are excluded (NaN).
+        Default 0.0.
     agg_method : str
-        Método de agregación temporal de cada ventana por píxel.
-        'median' recomendado por su robustez ante outliers en datos ecológicos.
+        Temporal aggregation method per pixel per window. 'median' recommended
+        for robustness to outliers in ecological data.
     min_recovery_periods : int
-        Número mínimo de quincenas consecutivas por encima de anomalía 0
-        para considerar que un píxel se ha recuperado realmente.
-        Evita que rebotes puntuales sean contabilizados como recuperación.
-        Por defecto 4 (~2 meses). Configurable por el usuario.
+        Minimum consecutive biweekly periods above anomaly 0 for a pixel to be
+        considered truly recovered. Prevents transient rebounds from being counted
+        as recovery. Default 4 (~2 months).
 
-    NOTA METODOLÓGICA:
-        Las métricas siguen Lloret et al. (2011) con diferencias en lugar de ratios,
-        siguiendo el enfoque de Xu et al. (2024). La Resiliencia Relativa ha sido
-        eliminada por su inestabilidad matemática con índices estandarizados.
-        El índice de sequía actúa como filtro de exposición: define qué píxeles
-        estuvieron expuestos al estrés hídrico, evaluado por el pico de severidad
-        (mínimo del índice) en lugar de la mediana.
-        El Déficit Acumulado y el Tiempo de Recuperación se referencian a anomalía 0
-        (condiciones históricas normales del SNDVI estandarizado) en lugar del Pre,
-        eliminando la dependencia de la elección de ventanas temporales.
-
-    Retorna:
-    --------
-    xr.Dataset con variables:
-        resistance, recovery, resilience,
+    Returns
+    -------
+    xr.Dataset
+        Variables: resistance, recovery, resilience,
         accumulated_deficit, recovery_time, did_not_recover,
-        drought_min    (mínimo del índice por píxel durante el evento),
-        drought_median (mediana del índice por píxel durante el evento)
+        drought_min (minimum index per pixel during the event),
+        drought_median (median index per pixel during the event).
     """
     veg_data   = dataset[veg_var]
     index_data = dataset[index_var]
 
-    # =========================================================================
-    # 1. EXTRAER VENTANAS TEMPORALES
-    # =========================================================================
+    # --- Extract temporal windows
     pre_da  = veg_data.sel(time=windows["vegetation"]["pre_drought"])
     dur_da  = veg_data.sel(time=windows["vegetation"]["during_drought"])
     post_da = veg_data.sel(time=windows["vegetation"]["post_drought"])
 
     index_dur_da = index_data.sel(time=windows["index"]["during_drought"])
 
-    # =========================================================================
-    # 2. MÁSCARA DE EXPOSICIÓN
-    # =========================================================================
-    # Pico de severidad del índice por píxel durante el evento (sin lag).
-    # Se usa el mínimo en lugar de la mediana porque la exposición a un riesgo
-    # debe evaluarse por el extremo alcanzado, no por la tendencia central.
+    # --- Exposure mask
+    # Peak severity per pixel during the event (no lag).
+    # Uses the minimum rather than the median because exposure to a hazard
+    # should be assessed by the extreme reached, not the central tendency.
     drought_min    = index_dur_da.min(dim="time", skipna=True)
     drought_median = index_dur_da.median(dim="time", skipna=True)
 
     exposure_mask = drought_min < exposure_threshold
 
-    # =========================================================================
-    # 3. MAPAS BASE ESTÁTICOS (agregación temporal por píxel)
-    # =========================================================================
+    # --- Static base maps (temporal aggregation per pixel)
     Pre  = aggregate_temporal_window(pre_da,  method=agg_method)
     Dur  = aggregate_temporal_window(dur_da,  method=agg_method)
     Post = aggregate_temporal_window(post_da, method=agg_method)
 
-    # =========================================================================
-    # 4. MÉTRICAS DE LLORET et al. (2011) — diferencias absolutas (Xu et al., 2024)
-    # =========================================================================
+    # --- Lloret et al. (2011) metrics -- absolute differences (Xu et al., 2024)
     resistance = Dur - Pre   # Rt = Dr - PreDr
     recovery   = Post - Dur  # Rc = PostDr - Dr
     resilience = Post - Pre  # Rs = PostDr - PreDr
 
-    # =========================================================================
-    # 5. MÉTRICAS DINÁMICAS
-    # =========================================================================
+    # --- Dynamic metrics
 
-    # A. Déficit Acumulado referenciado a anomalía 0
-    # Suma de quincenas donde el SNDVI es negativo durante el evento.
+    # Accumulated deficit referenced to anomaly 0.
+    # Sum of biweekly periods where SNDVI is negative during the event.
     accumulated_deficit = dur_da.where(dur_da < 0).sum(dim="time", skipna=True)
 
-    # B. Tiempo de Recuperación con recuperación sostenida
-    # Se exige que el píxel se mantenga >= 0 durante min_recovery_periods quincenas
-    # consecutivas para evitar que rebotes puntuales sean contabilizados como recuperación.
+    # Recovery time with sustained recovery requirement.
+    # The pixel must remain >= 0 for min_recovery_periods consecutive periods
+    # to avoid transient rebounds being counted as recovery.
     is_above_zero = (post_da >= 0).astype(float)
     rolling_mean  = is_above_zero.rolling(
         time=min_recovery_periods,
@@ -158,21 +142,21 @@ def vegetation_impact_metrics(
 
     recovery_time = (~has_recovered_yet).sum(dim="time", skipna=True)
 
-    # Píxeles que no alcanzaron recuperación sostenida → NaN
+    # Pixels that never reached sustained recovery get NaN
     total_post_periods = len(post_da.time)
     did_not_recover_mask = recovery_time == total_post_periods
     recovery_time = xr.where(did_not_recover_mask, np.nan, recovery_time)
 
-    # Corrección del sesgo algorítmico del rolling
+    # Correct the rolling-window algorithmic bias
+    # The rolling mean cannot produce a result until period N, introducing
+    # a delay of (N-1) periods. Subtract this offset to get the true onset.
     recovery_time = xr.where(
         ~did_not_recover_mask & (recovery_time > 0),
         recovery_time - (min_recovery_periods - 1),
         recovery_time
     )
 
-    # =========================================================================
-    # 6. APLICAR MÁSCARA DE EXPOSICIÓN A TODAS LAS MÉTRICAS
-    # =========================================================================
+    # --- Apply exposure mask to all metrics
     def apply_mask(da):
         return da.where(exposure_mask)
 

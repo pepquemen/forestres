@@ -1,27 +1,27 @@
 """
 Drought Impact Assessment Library
----------------------------------
-Librería científica para la evaluación de impactos ecológicos, vulnerabilidad
-y resiliencia de masas forestales frente a eventos de sequía extrema utilizando
-datos geoespaciales multidimensionales (Xarray) y análisis de autocorrelación espacial.
+----------------------------------
+Scientific library for evaluating ecological impacts, vulnerability, and
+resilience of forest stands under extreme drought events, using multi-
+dimensional geospatial data (Xarray) and spatial autocorrelation analysis.
 
-Flujo de trabajo recomendado:
------------------------------
-1. Cargar y recortar datos al área de estudio:
+Recommended workflow:
+---------------------
+1. Load and clip data to the study area:
     ds_clip = load_and_merge_datasets(
         drought_path    = "scpdsi.nc",
         vegetation_path = "SNDVI.nc",
         drought_var     = "value",
         vegetation_var  = "SNDVI",
-        shapefile_path  = "mi_area.shp",
+        shapefile_path  = "study_area.shp",
         crs             = "EPSG:23030"
     )
 
-2. Funciones de apoyo a la decisión (opcionales pero recomendadas):
-    events = detect_drought_events(ds_clip)   # Ver qué sequías hay
-    lag_df = compute_lag_correlation(ds_clip) # Estimar lag óptimo
+2. Decision-support functions (optional but recommended):
+    events = detect_drought_events(ds_clip)   # identify drought events
+    lag_df = compute_lag_correlation(ds_clip) # estimate optimal lag
 
-3. Ejecutar el pipeline con las fechas elegidas:
+3. Run the pipeline with chosen dates:
     results = run_drought_impact_pipeline(
         dataset                = ds_clip,
         pre_start              = "1995-06-15",
@@ -29,8 +29,8 @@ Flujo de trabajo recomendado:
         event_end              = "2001-10-15",
         post_end               = "2003-03-01",
         vegetation_lag_periods = 1,
-        output_dir             = "resultados/",
-        area_name              = "Mi área de estudio"
+        output_dir             = "results/",
+        area_name              = "My study area"
     )
 """
 
@@ -68,35 +68,35 @@ from drought_impact.export import (
 __version__ = "0.1.0"
 
 __all__ = [
-    # Orquestador principal
+    # Main orchestrator
     "run_drought_impact_pipeline",
 
-    # Carga y preparación de datos
+    # Data loading and preparation
     "load_and_standardize_netcdf",
     "load_and_merge_datasets",
     "clip_dataset_to_polygon",
 
-    # Funciones de apoyo a la decisión
-    "detect_drought_events",       # Detecta eventos con Run Theory + gráfico
-    "compute_lag_correlation",     # Estima lag óptimo índice → SNDVI
+    # Decision-support functions
+    "detect_drought_events",       # detect events with Run Theory + chart
+    "compute_lag_correlation",     # estimate optimal lag for the index vs SNDVI
 
-    # Ventanas temporales (uso interno del pipeline)
+    # Temporal windows (used internally by the pipeline)
     "get_analysis_windows",
 
-    # Métricas de impacto ecológico
+    # Ecological impact metrics
     "vegetation_impact_metrics",
 
-    # Análisis espacial
+    # Spatial analysis
     "calculate_getis_ord_gi_star",
 
-    # Exportación de datos
+    # Data export
     "export_metrics_to_geotiff",
     "export_clustering_to_geotiff",
     "export_events_to_csv",
     "export_zonal_statistics_to_csv",
     "export_metrics_to_vector",
 
-    # Visualización
+    # Visualisation
     "plot_drought_timeseries",
     "plot_metrics_individual",
     "plot_hotspots",
