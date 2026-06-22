@@ -1,8 +1,8 @@
-# drought_impact
+# forestres
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange)](https://github.com/pepquemen/drought-impact)
+[![Version](https://img.shields.io/badge/version-0.1.0-orange)](https://github.com/pepquemen/forestres)
 
 Python library for ecological drought impact assessment on forest vegetation using remote sensing data (SNDVI) and drought indices (scPDSI, SPEI, SPI).
 
@@ -30,8 +30,8 @@ pip install -e .
 Or clone and install manually:
 
 ```bash
-git clone https://github.com/pepquemen/drought-impact.git
-cd drought-impact
+git clone https://github.com/pepquemen/forestres.git
+cd forestres
 pip install -e .
 ```
 
@@ -47,9 +47,9 @@ pip install -e .
 ### Step 1 — Load and clip data to the study area
 
 ```python
-import drought_impact
+import forestres
 
-ds_clip = drought_impact.load_and_merge_datasets(
+ds_clip = forestres.load_and_merge_datasets(
     drought_path    = "scpdsi.nc",
     vegetation_path = "SNDVI.nc",
     drought_var     = "value",
@@ -67,7 +67,7 @@ ds_clip = drought_impact.load_and_merge_datasets(
 
 ```python
 # Detect drought events in the historical series
-events = drought_impact.detect_drought_events(
+events = forestres.detect_drought_events(
     ds_clip,
     severity_threshold = -2.74,   # severe drought threshold (CSIC scPDSI scale)
     min_duration       = 6,       # minimum 6 biweekly periods (~3 months)
@@ -78,7 +78,7 @@ events = drought_impact.detect_drought_events(
 print(events)
 
 # Estimate the optimal vegetation response lag
-lag_df = drought_impact.compute_lag_correlation(
+lag_df = forestres.compute_lag_correlation(
     ds_clip,
     max_lag     = 24,             # evaluate lags from 0 to 24 biweekly periods (~12 months)
     plot        = True,
@@ -96,7 +96,7 @@ lag_df = drought_impact.compute_lag_correlation(
 ### Step 3 — Run the full analysis pipeline
 
 ```python
-results = drought_impact.run_drought_impact_pipeline(
+results = forestres.run_forestres_pipeline(
     dataset                = ds_clip,
     pre_start              = "1995-06-15",   # start of pre-drought baseline window
     event_start            = "1997-01-15",   # start of drought event (from Step 2)
@@ -161,7 +161,7 @@ Metrics follow [Lloret et al. (2011)](https://doi.org/10.1111/j.1600-0706.2011.1
 ## Module Structure
 
 ```
-src/drought_impact/
+src/forestres/
 ├── __init__.py          # Public API (20 functions)
 ├── spatial_io.py        # Data loading, alignment and clipping
 ├── drought_detection.py # Event detection, lag correlation, analysis windows
@@ -186,7 +186,7 @@ Add this before importing the library:
 ```python
 import os
 os.environ["PROJ_LIB"] = r"C:\path\to\pyproj\proj_dir\share\proj"
-import drought_impact
+import forestres
 ```
 
 Or update pyproj:
@@ -219,7 +219,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 If you use this library in your research, please cite:
 
 ```
-Quevedo Méndez, Josep. (2026). drought_impact: A Python library for ecological drought impact 
+Quevedo Méndez, Josep. (2026). forestres: A Python library for ecological drought impact 
 assessment on forest vegetation (v0.1.0). GitHub. 
-https://github.com/pepquemen/drought-impact
+https://github.com/pepquemen/forestres
 ```
