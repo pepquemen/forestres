@@ -7,6 +7,52 @@ import warnings
 
 # --- Decision-support functions
 
+def _find_positive_period_start(values, from_idx, pooling_periods):
+    """
+    Go backwards from from_idx to find the start of the positive period,
+    applying pooling for transient negatives.
+    """
+    pre_start_idx = from_idx
+    consecutive_neg = 0
+    i = from_idx
+
+    while i >= 0:
+        if values[i] >= 0:
+            pre_start_idx = i
+            consecutive_neg = 0
+        else:
+            consecutive_neg += 1
+            if consecutive_neg > pooling_periods:
+                pre_start_idx = i + consecutive_neg
+                break
+        i -= 1
+
+    return pre_start_idx
+
+
+def _find_positive_period_end(values, from_idx, pooling_periods):
+    """
+    Go forward from from_idx to find the end of the positive period,
+    applying pooling for transient negatives.
+    """
+    post_end_idx = from_idx
+    consecutive_neg = 0
+    i = from_idx
+
+    while i < len(values):
+        if values[i] >= 0:
+            post_end_idx = i
+            consecutive_neg = 0
+        else:
+            consecutive_neg += 1
+            if consecutive_neg > pooling_periods:
+                post_end_idx = i - consecutive_neg
+                break
+        i += 1
+
+    return post_end_idx
+
+
 def detect_drought_events(
     dataset: xr.Dataset,
     index_var: str = "drought_index",
@@ -25,6 +71,12 @@ def detect_drought_events(
     index falls below onset_threshold, provided it reaches severity_threshold at
     some point and meets the minimum duration. Runs separated by fewer than
     pooling_periods positive periods are merged into a single event.
+
+    For each detected event, the function also estimates the surrounding positive
+    periods (Pre and Post windows) using the same pooling criterion. These are
+    provided as informational columns to guide the user in defining the analysis
+    windows for run_drought_impact_pipeline(). The user should review these
+    suggested dates against the time series plot and adjust if needed.
 
     All temporal parameters are expressed in biweekly periods (1 month ~ 2 periods).
 
@@ -46,6 +98,7 @@ def detect_drought_events(
     pooling_periods : int
         Maximum number of positive periods between two runs for them to be
         merged into one event (default 4, approximately 2 months).
+        Also used to pool transient negatives when estimating Pre and Post windows.
     plot : bool
         If True, generate a time-series plot with events shaded.
     output_path : str, optional
@@ -55,7 +108,15 @@ def detect_drought_events(
     -------
     pd.DataFrame
         Columns: event_id, start_date, end_date, duration_periods,
-        duration_months, max_severity, accumulated_deficit.
+        duration_months, max_severity, accumulated_deficit,
+        pre_start, pre_end, post_start, post_end.
+
+        pre_start / pre_end: suggested start and end of the pre-drought window
+        (full positive period before the event, with pooling).
+        post_start / post_end: suggested start and end of the post-drought window
+        (full positive period after the event, with pooling).
+        These dates are suggestions -- review them against the time series plot
+        before using them in run_drought_impact_pipeline().
     """
     # Compute the spatial median of the index
     spatial_median = dataset[index_var].median(dim=["x", "y"])
@@ -101,6 +162,19 @@ def detect_drought_events(
         accumulated_deficit = float(np.sum(event_values[event_values < 0]))
 
         if duration >= min_duration and max_severity <= severity_threshold:
+
+            # Estimate Pre window: go backwards from event start
+            pre_end_idx   = start_i - 1
+            pre_start_idx = _find_positive_period_start(
+                values, pre_end_idx, pooling_periods
+            ) if pre_end_idx >= 0 else 0
+
+            # Estimate Post window: go forward from event end
+            post_start_idx = end_i + 1
+            post_end_idx   = _find_positive_period_end(
+                values, post_start_idx, pooling_periods
+            ) if post_start_idx < len(values) else len(values) - 1
+
             events_list.append({
                 "event_id":            event_id,
                 "start_date":          str(times[start_i].date()),
@@ -108,7 +182,11 @@ def detect_drought_events(
                 "duration_periods":    duration,
                 "duration_months":     round(duration / 2, 1),
                 "max_severity":        max_severity,
-                "accumulated_deficit": accumulated_deficit
+                "accumulated_deficit": accumulated_deficit,
+                "pre_start":           str(times[pre_start_idx].date()),
+                "pre_end":             str(times[pre_end_idx].date()) if pre_end_idx >= 0 else str(times[start_i].date()),
+                "post_start":          str(times[post_start_idx].date()) if post_start_idx < len(times) else str(times[end_i].date()),
+                "post_end":            str(times[post_end_idx].date()),
             })
             event_id += 1
 
@@ -120,6 +198,18 @@ def detect_drought_events(
             "Consider reducing severity_threshold or min_duration."
         )
         return events_df
+
+    # Print suggested windows for each event
+    print("\nSuggested analysis windows (review against time series before using):")
+    for _, row in events_df.iterrows():
+        print(
+            f"  Event {int(row['event_id'])}: "
+            f"pre_start={row['pre_start']}  "
+            f"event_start={row['start_date']}  "
+            f"event_end={row['end_date']}  "
+            f"post_end={row['post_end']}"
+        )
+    print("  Use these as pre_start, event_start, event_end, post_end in run_drought_impact_pipeline().\n")
 
     # Plot the time series with events shaded
     if plot:
@@ -262,6 +352,7 @@ def compute_lag_correlation(
         denom_veg   = np.sqrt(np.nansum(veg_dev ** 2, axis=0))
         denominator = denom_idx * denom_veg
 
+        # Mean across pixels (not median) to avoid bias in heterogeneous areas
         corr_map  = np.where(denominator > 1e-6, numerator / denominator, np.nan)
         mean_corr = float(np.nanmean(corr_map))
 
@@ -309,15 +400,16 @@ def compute_lag_correlation(
                     bar.get_x() + bar.get_width() / 2,
                     bar.get_height() + 0.002,
                     f"{row['correlation']:.4f}",
-                    ha="center", va="bottom",
-                    fontsize=7.5, color="#2c3e50"
+                    ha="left", va="bottom",
+                    fontsize=7.5, color="#2c3e50",
+                    rotation=45
                 )
 
         ax.set_xticks(corr_df["lag_periods"])
         ax.set_xticklabels(
             [f"Lag {int(r['lag_periods'])}\n(~{r['lag_months']} mo)"
              for _, r in corr_df.iterrows()],
-            fontsize=8
+            fontsize=7, rotation=45, ha="right"
         )
         ax.set_xlabel("Lag (biweekly periods)", fontsize=11)
         ax.set_ylabel("Mean Pearson correlation (pixel-wise)", fontsize=11)

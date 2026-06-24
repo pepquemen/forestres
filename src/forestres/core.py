@@ -16,8 +16,7 @@ from forestres.export import (
     plot_drought_timeseries,
     plot_metrics_individual,
     plot_hotspots,
-    plot_metrics_histograms,
-    plot_line_of_full_resilience
+    plot_metrics_histograms
 )
 
 logger = logging.getLogger(__name__)
@@ -250,9 +249,6 @@ def run_drought_impact_pipeline(
     results["plot_individual"] = plot_metrics_individual(metrics_ds, output_dir)
     results["plot_hotspots"]   = plot_hotspots(clustering_ds, output_dir)
     results["plot_histograms"] = plot_metrics_histograms(metrics_ds, output_dir)
-    results["plot_resilience"] = plot_line_of_full_resilience(
-        metrics_ds, output_dir, area_name=area_name
-    )
 
     logger.info(f"Pipeline complete. Deliverables in: {output_dir}")
     return results

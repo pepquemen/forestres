@@ -61,8 +61,7 @@ from forestres.export import (
     plot_drought_timeseries,
     plot_metrics_individual,
     plot_hotspots,
-    plot_metrics_histograms,
-    plot_line_of_full_resilience
+    plot_metrics_histograms
 )
 
 __version__ = "0.1.0"
@@ -101,5 +100,4 @@ __all__ = [
     "plot_metrics_individual",
     "plot_hotspots",
     "plot_metrics_histograms",
-    "plot_line_of_full_resilience"
 ]
