@@ -124,7 +124,7 @@ def run_drought_impact_pipeline(
         Paths to all generated deliverables:
         windows, metrics_tifs, statistics_csv, hotspots_tif,
         plot_timeseries, plot_individual, plot_hotspots,
-        plot_histograms, plot_resilience.
+        plot_histograms.
     """
     os.makedirs(output_dir, exist_ok=True)
     results = {}

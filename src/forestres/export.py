@@ -7,7 +7,6 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
-from scipy import stats
 from shapely.geometry import Point
 
 
@@ -371,49 +370,48 @@ def plot_hotspots(clustering_ds: xr.Dataset, output_dir: str, filename: str = "h
     return out_path
 
 
-def plot_metrics_histograms(metrics_ds: xr.Dataset, output_dir: str, filename: str = "metrics_histograms.png") -> str:
+def plot_metrics_histograms(
+    metrics_ds: xr.Dataset,
+    output_dir: str,
+    subfolder: str = "individual_histograms"
+) -> list:
     """
-    Generate distribution histograms for each metric.
+    Generate individual distribution histogram for each metric.
     """
-    os.makedirs(output_dir, exist_ok=True)
+    out_dir = os.path.join(output_dir, subfolder)
+    os.makedirs(out_dir, exist_ok=True)
+    generated = []
+
     plot_vars = [v for v in _METRIC_STYLES if v in metrics_ds.data_vars and v != "did_not_recover"]
 
-    n_cols = 3
-    n_rows = int(np.ceil(len(plot_vars) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5.5 * n_cols, 4.5 * n_rows))
-    axes = np.array(axes).flatten()
-
-    for i, var_name in enumerate(plot_vars):
-        ax         = axes[i]
+    for var_name in plot_vars:
         flat_data  = metrics_ds[var_name].values.flatten()
         clean_data = flat_data[~np.isnan(flat_data)]
         style      = _METRIC_STYLES[var_name]
 
         if len(clean_data) == 0:
-            ax.set_title(f"{style['label']} (No data)")
             continue
 
         mean_val   = float(np.mean(clean_data))
         median_val = float(np.median(clean_data))
 
+        fig, ax = plt.subplots(figsize=(7, 5))
         ax.hist(clean_data, bins=45, color="#455a64", alpha=0.8, edgecolor="white", linewidth=0.3)
         ax.axvline(mean_val,   color="#e74c3c", linewidth=1.5, linestyle="--", label=f"Mean: {mean_val:.3f}")
         ax.axvline(median_val, color="#3498db", linewidth=1.5, linestyle=":",  label=f"Median: {median_val:.3f}")
 
-        ax.set_title(style["label"], fontsize=10, weight="bold", pad=6)
-        ax.set_xlabel("Value", fontsize=8)
-        ax.set_ylabel("Pixel count", fontsize=8)
-        ax.legend(fontsize=8, framealpha=0.8)
+        ax.set_title(style["label"], fontsize=12, weight="bold", pad=8)
+        ax.set_xlabel("Value", fontsize=10)
+        ax.set_ylabel("Pixel count", fontsize=10)
+        ax.legend(fontsize=9, framealpha=0.8)
         ax.grid(axis="y", linestyle=":", alpha=0.4)
 
-    for j in range(len(plot_vars), len(axes)):
-        axes[j].set_visible(False)
+        plt.tight_layout()
+        out_path = os.path.join(out_dir, f"{var_name}.png")
+        fig.savefig(out_path, dpi=200, bbox_inches="tight")
+        plt.close(fig)
+        generated.append(out_path)
 
-    fig.suptitle("Metric Distributions", fontsize=14, y=1.01, weight="bold")
-    plt.tight_layout()
-    out_path = os.path.join(output_dir, filename)
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-    plt.close(fig)
-    return out_path
+    return generated
 
 
