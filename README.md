@@ -96,7 +96,7 @@ lag_df = fr.compute_lag_correlation(
 ### Step 3 — Run the full analysis pipeline
 
 ```python
-results = fr.run_drought_impact_pipeline(
+results = fr.run_forestres_pipeline(
     dataset                = ds_clip,
     pre_start              = "1995-06-15",   # start of pre-drought baseline window
     event_start            = "1997-01-15",   # start of drought event (from Step 2)
