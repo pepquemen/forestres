@@ -22,7 +22,7 @@ Recommended workflow:
     lag_df = compute_lag_correlation(ds_clip) # estimate optimal lag
 
 3. Run the pipeline with chosen dates:
-    results = run_drought_impact_pipeline(
+    results = run_forestres_pipeline(
         dataset                = ds_clip,
         pre_start              = "1995-06-15",
         event_start            = "1997-01-15",
@@ -34,7 +34,7 @@ Recommended workflow:
     )
 """
 
-from forestres.core import run_drought_impact_pipeline
+from forestres.core import run_forestres_pipeline
 
 from forestres.spatial_io import (
     load_and_standardize_netcdf,
@@ -68,7 +68,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     # Main orchestrator
-    "run_drought_impact_pipeline",
+    "run_forestres_pipeline",
 
     # Data loading and preparation
     "load_and_standardize_netcdf",

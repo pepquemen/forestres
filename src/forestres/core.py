@@ -22,7 +22,7 @@ from forestres.export import (
 logger = logging.getLogger(__name__)
 
 
-def run_drought_impact_pipeline(
+def run_forestres_pipeline(
         dataset: xr.Dataset,
         pre_start: str,
         event_start: str,
@@ -62,7 +62,7 @@ def run_drought_impact_pipeline(
             lag_df = compute_lag_correlation(ds_clip)
 
         3. Run the pipeline with the chosen dates:
-            results = run_drought_impact_pipeline(
+            results = runforestres_pipeline(
                 dataset                = ds_clip,
                 pre_start              = "1995-06-15",
                 event_start            = "1997-01-15",
