@@ -219,7 +219,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 If you use this library in your research, please cite:
 
 ```
-Quetglas, P. (2025). forestres: A Python library for ecological drought impact
+Quevedo Méndez, Josep. (2026). forestres: A Python library for ecological drought impact
 assessment on forest vegetation (v0.1.0). GitHub.
 https://github.com/pepquemen/forestres
 ```

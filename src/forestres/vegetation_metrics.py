@@ -105,7 +105,11 @@ def vegetation_impact_metrics(
     drought_min    = index_dur_da.min(dim="time", skipna=True)
     drought_median = index_dur_da.median(dim="time", skipna=True)
 
-    exposure_mask = drought_min < exposure_threshold
+    # Exposure mask: pixels below onset threshold during the event
+    # Also excludes coastal edge-effect pixels where drought_median == 0
+    # (partially marine pixels at island boundaries with no real drought signal)
+    edge_effect_mask = drought_median != 0
+    exposure_mask = (drought_min < exposure_threshold) & edge_effect_mask
 
     # --- Static base maps (temporal aggregation per pixel)
     Pre  = aggregate_temporal_window(pre_da,  method=agg_method)
@@ -169,7 +173,9 @@ def vegetation_impact_metrics(
             "recovery_time":       apply_mask(recovery_time),
             "did_not_recover":     apply_mask(did_not_recover_mask.astype(np.uint8)),
             "drought_min":         drought_min,
-            "drought_median":      drought_median
+            "drought_median":      drought_median,
+            "drought_min": apply_mask(drought_min),
+            "drought_median": apply_mask(drought_median)
         }
     )
 
